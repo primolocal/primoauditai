@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Photo Tagger — PrimoAuditAI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+.header{background:#1e293b;border-bottom:1px solid #334155;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+.header h1{color:#f59e0b;font-size:16px}
+.header p{color:#64748b;font-size:11px}
+.container{display:flex;height:calc(100vh - 52px)}
+.upload-panel{width:360px;background:#1e293b;border-right:1px solid #334155;padding:16px;overflow-y:auto}
+.upload-panel h3{font-size:13px;color:#f59e0b;margin-bottom:12px}
+.upload-panel input{margin-bottom:12px}
+.upload-panel label{font-size:10px;color:#94a3b8;display:block;margin-bottom:3px}
+.upload-panel input[type=file]{width:100%;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px}
+.btn{width:100%;padding:10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none}
+.btn-primary{background:#f59e0b;color:#0f172a;margin-bottom:8px}
+.btn-secondary{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.lightbox{display:none;position:absolute;inset:0;background:rgba(0,0,0,.95);z-index:999;overflow:hidden}
+.lightbox.show{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.lightbox img{max-width:100%;max-height:100%;transition:transform .2s;cursor:grab;user-select:none;position:absolute}
+.lightbox img:active{cursor:grabbing}
+.lightbox .close{position:absolute;top:8px;right:12px;color:#fff;font-size:24px;cursor:pointer;z-index:2}
+.lightbox .tools{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:2}
+.lightbox .tools button{background:rgba(30,41,59,.9);color:#94a3b8;border:1px solid #334155;padding:6px 12px;border-radius:4px;font-size:11px;cursor:pointer}
+.lightbox .tools button.active{background:#f59e0b;color:#0f172a}
+.photo-grid{flex:1;padding:12px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;align-content:start}
+.photo-card{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden}
+.photo-card img{cursor:pointer;width:100%;max-height:200px;object-fit:contain;background:#0f172a}
+.photo-card .info{padding:8px 10px}
+.photo-card .name{font-size:10px;color:#94a3b8;margin-bottom:6px}
+.photo-card .tags{display:flex;flex-wrap:wrap;gap:3px;max-height:120px;overflow-y:auto}
+.photo-card .tag{padding:2px 6px;background:#0f172a;border:1px solid #334155;border-radius:3px;font-size:10px;cursor:pointer;white-space:nowrap}
+.photo-card .tag.active{background:#14532d;border-color:#16a34a;color:#86efac}
+.est-panel{background:#1e293b;border-bottom:1px solid #334155;padding:10px 16px;display:none}
+.est-panel.show{display:block}
+.est-panel h3{font-size:12px;color:#f59e0b;margin-bottom:8px}
+.est-lines{display:flex;flex-wrap:wrap;gap:4px}
+.est-line{font-size:10px;padding:3px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;cursor:pointer}
+.est-line.tagged{background:#451a1a;border-color:#dc2626;color:#fca5a5}
+.est-line.covered{background:#14532d;border-color:#16a34a;color:#86efac}
+.summary-bar{position:fixed;bottom:0;left:360px;right:0;background:#1e293b;border-top:1px solid #334155;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+.summary-bar .stat{font-size:10px;color:#94a3b8}
+.summary-bar .stat b{color:#f59e0b}
+</style>
+</head>
+<body>
+<div class="header">
+  <div><h1>Photo Tagger</h1><p>Upload estimate + photos → tag photos to estimate lines</p></div>
+  <div id="status" style="font-size:11px;color:#64748b">Ready</div>
+</div>
+
+<div class="container">
+  <div class="upload-panel">
+    <h3>1. Upload Estimate</h3>
+    <input type="file" id="estFile" accept=".pdf,.zip">
+    <h3>2. Upload Photos</h3>
+    <input type="file" id="photoFile" accept="image/*,.pdf" multiple>
+    <button class="btn btn-primary" onclick="processFiles()" id="processBtn" disabled>PROCESS FILES</button>
+    
+    <div id="estSummary" style="margin-top:12px;display:none">
+      <h3>Estimate Lines</h3>
+      <div id="estLinesPanel" class="est-lines"></div>
+    </div>
+    
+    <div style="margin-top:12px">
+      <h3 style="font-size:13px;color:#f59e0b">Unsupported Lines</h3>
+      <div id="unsupported" class="est-lines" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div class="photo-grid" id="photoGrid"></div>
+  <div class="lightbox" id="lightbox" style="left:360px">
+    <span class="close" onclick="closeLightbox()">&times;</span>
+    <div class="tools">
+      <button onclick="zoomLightbox(-0.25)">−</button>
+      <button onclick="zoomLightbox(0.25)">+</button>
+      <button id="btnInvert" onclick="toggleInvert()">INVERT</button>
+      <button id="btnBW" onclick="toggleBW()">B&W</button>
+      <button onclick="resetLightbox()">RESET</button>
+    </div>
+    <img id="lightboxImg" src="">
+  </div>
+</div>
+
+<div class="summary-bar">
+  <div>
+    <span class="stat">Photos: <b id="photoCount">0</b></span>
+    <span class="stat" style="margin-left:16px">Lines tagged: <b id="taggedCount">0</b></span>
+    <span class="stat" style="margin-left:16px">Lines covered: <b id="coveredCount">0</b></span>
+    <span class="stat" style="margin-left:16px">Unsupported: <b id="unsupportedCount" style="color:#fca5a5">0</b></span>
+  </div>
+  <button class="btn" style="width:auto;padding:6px 16px;background:#16a34a;color:#fff" onclick="exportReport()">EXPORT REPORT</button>
+</div>
+
+<script>
+const API_QC = '/api/qc';
+const API_FULL = '/api/audit/full';
+let lines = [], tagged = {}, covered = new Set(), lightboxIdx = -1, allPhotoUrls = [];
+let lightboxZoom = 1, lightboxX = 0, lightboxY = 0, dragging = false, dragX = 0, dragY = 0;
+
+function openLightbox(idx) {
+  lightboxIdx = idx;
+  lightboxZoom = 1; lightboxX = 0; lightboxY = 0;
+  document.getElementById('btnInvert').classList.remove('active');
+  document.getElementById('btnBW').classList.remove('active');
+  const img = document.getElementById('lightboxImg');
+  img.src = allPhotoUrls[idx];
+  img.style.transform = 'scale(1)';
+  img.style.left = '50%'; img.style.top = '50%';
+  img.style.filter = '';
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox() { document.getElementById('lightbox').classList.remove('show'); }
+function zoomLightbox(delta) {
+  lightboxZoom = Math.max(0.25, Math.min(4, lightboxZoom + delta));
+  updateLightboxTransform();
+}
+function resetLightbox() {
+  lightboxZoom = 1; lightboxX = 0; lightboxY = 0;
+  document.getElementById('btnInvert').classList.remove('active');
+  document.getElementById('btnBW').classList.remove('active');
+  document.getElementById('lightboxImg').style.filter = '';
+  updateLightboxTransform();
+}
+function toggleInvert() {
+  const btn = document.getElementById('btnInvert');
+  btn.classList.toggle('active');
+  const bw = document.getElementById('btnBW').classList.contains('active');
+  const img = document.getElementById('lightboxImg');
+  img.style.filter = btn.classList.contains('active') ? (bw ? 'invert(1) grayscale(1)' : 'invert(1)') : (bw ? 'grayscale(1)' : '');
+}
+function toggleBW() {
+  const btn = document.getElementById('btnBW');
+  btn.classList.toggle('active');
+  const inv = document.getElementById('btnInvert').classList.contains('active');
+  const img = document.getElementById('lightboxImg');
+  img.style.filter = btn.classList.contains('active') ? (inv ? 'invert(1) grayscale(1)' : 'grayscale(1)') : (inv ? 'invert(1)' : '');
+}
+function updateLightboxTransform() {
+  const img = document.getElementById('lightboxImg');
+  img.style.transform = `translate(-50%,-50%) translate(${lightboxX}px,${lightboxY}px) scale(${lightboxZoom})`;
+}
+document.getElementById('lightboxImg').addEventListener('mousedown', e => {
+  dragging = true; dragX = e.clientX - lightboxX; dragY = e.clientY - lightboxY;
+});
+document.addEventListener('mousemove', e => {
+  if(!dragging) return;
+  lightboxX = e.clientX - dragX; lightboxY = e.clientY - dragY;
+  updateLightboxTransform();
+});
+document.addEventListener('mouseup', () => dragging = false);
+document.addEventListener('wheel', e => {
+  if(!document.getElementById('lightbox').classList.contains('show')) return;
+  e.preventDefault();
+  zoomLightbox(e.deltaY < 0 ? 0.1 : -0.1);
+}, {passive: false});
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') closeLightbox();
+  if(e.key === 'ArrowLeft') { e.preventDefault(); if(lightboxIdx > 0) openLightbox(lightboxIdx-1); }
+  if(e.key === 'ArrowRight') { e.preventDefault(); if(lightboxIdx < allPhotoUrls.length-1) openLightbox(lightboxIdx+1); }
+});
+
+document.getElementById('estFile').addEventListener('change',e=>{
+  document.getElementById('processBtn').disabled = !e.target.files[0];
+});
+
+async function processFiles() {
+  const estFile = document.getElementById('estFile').files[0];
+  const photoFiles = Array.from(document.getElementById('photoFile').files||[]);
+  if(!estFile) return alert('Upload estimate first');
+  
+  document.getElementById('status').textContent = 'Processing...';
+  
+  // Use full audit endpoint for both lines and photo extraction
+  lines = [];
+  
+  // Full audit for photo extraction and lines
+  if(photoFiles.length) {
+    const fullForm = new FormData(); fullForm.append('estimate_pdf', estFile);
+    fullForm.append('nada_value', '0');
+    photoFiles.forEach(p => fullForm.append('photos', p));
+    try {
+      const fullRes = await fetch(API_FULL,{method:'POST',body:fullForm});
+      const fullData = await fullRes.json();
+      
+      if(fullData.extracted_photos) renderPhotos(fullData.extracted_photos);
+      
+      for(const p of (fullData.claim_panels||[])) {
+        for(const r of (p.rows||[])) {
+          if(r.is_header) continue;
+          const op = (r.operation_label||'').toLowerCase();
+          if(['include','','included'].includes(op)) continue;
+          lines.push({no: r.line_no, op: op, desc: (r.description||'').substring(0,40)});
+        }
+      }
+    } catch(e) { console.error(e); }
+  } else {
+    // No photos — just get lines from QC findings
+    if(qcData && qcData.findings) {
+      for(const cat of ['verify','fix','remove','review']) {
+        for(const f of (qcData.findings[cat]||[])) {
+          const ln = f.lines?.[0] || f.line_no;
+          if(!ln) continue;
+          if(!lines.find(l => l.no == ln)) {
+            lines.push({no: ln, op: '', desc: f.summary?.substring(0,40)||''});
+          }
+        }
+      }
+    }
+  }
+  
+  renderEstLines();
+  updateStats();
+  document.getElementById('status').textContent = `${lines.length} lines loaded`;
+  document.getElementById('estSummary').style.display = 'block';
+}
+
+function renderPhotos(photos) {
+  const grid = document.getElementById('photoGrid');
+  grid.innerHTML = '';
+  allPhotoUrls = photos.map(p => p.data_url);
+  photos.forEach((p,i) => {
+    tagged[i] = tagged[i] || new Set();
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+    card.innerHTML = `
+      <img src="${p.data_url}" onclick="event.stopPropagation();openLightbox(${i})" onerror="this.style.display='none'">
+      <div class="info">
+        <div class="name">${p.filename}</div>
+        <div class="tags" id="tags-${i}"></div>
+      </div>`;
+    grid.appendChild(card);
+    refreshPhotoTags(i);
+  });
+  document.getElementById('photoCount').textContent = photos.length;
+}
+
+function refreshPhotoTags(i) {
+  const el = document.getElementById('tags-'+i);
+  if(!el) return;
+  el.innerHTML = lines.map(l => {
+    const active = (tagged[i]||new Set()).has(l.no);
+    return `<div class="tag${active?' active':''}" onclick="toggleTag(${i},${l.no})">L${l.no} ${l.op} ${l.desc}</div>`;
+  }).join('');
+}
+
+function toggleTag(photoIdx, lineNo) {
+  if(!tagged[photoIdx]) tagged[photoIdx] = new Set();
+  if(tagged[photoIdx].has(lineNo)) tagged[photoIdx].delete(lineNo);
+  else tagged[photoIdx].add(lineNo);
+  refreshPhotoTags(photoIdx);
+  updateCovered();
+  updateStats();
+}
+
+function markSupported(lineNo) {
+  covered.add(lineNo);
+  updateStats();
+}
+
+function updateCovered() {
+  const fromTags = new Set();
+  for(const s of Object.values(tagged)) for(const l of s) fromTags.add(l);
+  // Merge with manually marked lines
+  for(const l of covered) fromTags.add(l);
+  covered = fromTags;
+}
+
+function updateStats() {
+  let total = 0;
+  for(const s of Object.values(tagged)) total += s.size;
+  updateCovered();
+  document.getElementById('taggedCount').textContent = total;
+  document.getElementById('coveredCount').textContent = covered.size;
+  document.getElementById('unsupportedCount').textContent = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install').length;
+  renderUnsupported();
+}
+
+function renderEstLines() {
+  const el = document.getElementById('estLinesPanel');
+  el.innerHTML = lines.map(l => `
+    <div class="est-line" id="el-${l.no}" onclick="scrollToLine(${l.no})">L${l.no}: ${l.op} ${l.desc}</div>
+  `).join('');
+}
+
+function renderUnsupported() {
+  const el = document.getElementById('unsupported');
+  const unsup = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install');
+  el.innerHTML = unsup.map(l => `
+    <div class="est-line tagged" onclick="markSupported(${l.no})" title="Click to mark as supported">L${l.no}: ${l.op} ${l.desc}</div>
+  `).join('');
+  // Highlight unsupported in main list
+  lines.forEach(l => {
+    const dv = document.getElementById('el-'+l.no);
+    if(dv) {
+      if(covered.has(l.no)) { dv.className='est-line covered'; }
+      else if(l.op !== 'remove & install') { dv.className='est-line tagged'; }
+      else { dv.className='est-line'; }
+    }
+  });
+}
+
+function scrollToLine(no) {
+  document.getElementById('el-'+no)?.scrollIntoView({behavior:'smooth'});
+}
+
+function exportReport() {
+  const unsup = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install');
+  let report = `PHOTO SUPPORT REPORT\n${'='.repeat(40)}\n\n`;
+  report += `Lines with photo support: ${covered.size}/${lines.length}\n`;
+  report += `Unsupported operations: ${unsup.length}\n\n`;
+  report += `UNSUPPORTED (no photo coverage):\n`;
+  unsup.forEach(l => report += `  L${l.no}: ${l.op} ${l.desc}\n`);
+  report += `\nIF THE PHOTOS DON'T SHOW IT, DO NOT WRITE IT.\n`;
+  navigator.clipboard.writeText(report).then(()=>alert('Report copied!'));
+}
+</script>
+</body>
+</html>

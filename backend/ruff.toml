@@ -1,0 +1,42 @@
+# Ruff configuration for PrimoAuditAI backend
+# See: https://docs.astral.sh/ruff/configuration/
+
+target-version = "py311"
+
+line-length = 100
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[lint]
+# Enabled rule sets
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "N",   # pep8-naming
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+]
+
+# Line length is handled by the formatter
+ignore = ["E501"]
+
+# Exclude generated/migration/cache directories
+exclude = [
+    ".git",
+    ".pytest_cache",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "alembic/versions",
+    "migrations",
+]
+
+[lint.isort]
+known-first-party = ["api", "services", "rules", "models"]

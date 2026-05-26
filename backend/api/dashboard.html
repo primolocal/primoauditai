@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IANet Audit Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:8px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.topbar h1{font-size:14px;color:#f59e0b}
+.topbar .claim{font-size:11px;color:#94a3b8}
+.topbar .claim b{color:#e2e8f0}
+.topbar input[type=file]{background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:10px;padding:4px 8px;border-radius:4px;max-width:160px}
+.topbar button{background:#f59e0b;color:#0f172a;border:none;font-size:10px;padding:5px 12px;border-radius:4px;font-weight:600;cursor:pointer}
+.topbar .badge{font-size:9px;padding:2px 8px;border-radius:3px}
+.badge.ok{background:#14532d;color:#86efac}
+.badge.warn{background:#451a1a;color:#fca5a5}
+.tabs{display:flex;gap:0;background:#1e293b;border-bottom:1px solid #334155;padding:0 16px;flex-shrink:0}
+.tab{padding:8px 16px;font-size:11px;color:#94a3b8;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab:hover{color:#e2e8f0}
+.tab.active{color:#f59e0b;border-bottom-color:#f59e0b}
+.tab .count{font-size:9px;margin-left:4px;padding:1px 5px;border-radius:8px;background:#334155}
+.main{flex:1;overflow:hidden;display:flex}
+.panel{display:none;flex:1;overflow-y:auto;padding:16px}
+.panel.active{display:flex;flex-direction:column}
+/* ESTIMATE TAB */
+.est-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
+.est-card{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:12px}
+.est-card .label{font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px}
+.est-card .value{font-size:18px;font-weight:700;color:#f59e0b;margin-top:4px}
+.est-card .sub{font-size:10px;color:#64748b;margin-top:2px}
+.line-table{width:100%;border-collapse:collapse;font-size:10px}
+.line-table th{text-align:left;padding:4px 8px;background:#1e293b;color:#94a3b8;font-weight:400;font-size:9px;text-transform:uppercase;position:sticky;top:0}
+.line-table td{padding:4px 8px;border-bottom:1px solid #1e293b}
+.line-table tr:hover{background:#1e293b}
+.line-table .ln{color:#f59e0b;font-weight:700}
+.line-table .flag{border-left:2px solid #dc2626;background:#451a1a11}
+.line-table .price{text-align:right;font-family:monospace}
+.line-table .hours{text-align:right;font-family:monospace}
+/* PHOTOS TAB */
+.photo-toolbar{display:flex;gap:8px;align-items:center;padding:8px 0;margin-bottom:8px;flex-wrap:wrap}
+.photo-toolbar button{background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer}
+.photo-toolbar button.active{background:#f59e0b;color:#0f172a;border-color:#f59e0b}
+.photo-toolbar button.danger{background:#451a1a;color:#fca5a5;border-color:#991b1b}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.photo-card{background:#1e293b;border:1px solid #334155;border-radius:6px;overflow:hidden;position:relative}
+.photo-card img{width:100%;height:140px;object-fit:cover;cursor:pointer}
+.photo-card .info{padding:6px 8px}
+.photo-card .fname{width:100%;background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:9px;padding:2px 4px;border-radius:2px}
+.photo-card .tags{display:flex;flex-wrap:wrap;gap:2px;margin-top:4px}
+.photo-card .tag{font-size:8px;padding:1px 4px;background:#0f172a;border-radius:2px;cursor:pointer}
+.photo-card .tag.active{background:#14532d;color:#86efac}
+.photo-card .tag.unsup{background:#451a1a;color:#fca5a5}
+.photo-viewer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:999;align-items:center;justify-content:center}
+.photo-viewer-overlay.show{display:flex}
+.photo-viewer-overlay img{max-width:95vw;max-height:90vh;object-fit:contain}
+.photo-viewer-overlay .tools{position:absolute;bottom:16px;display:flex;gap:6px}
+.photo-viewer-overlay button{background:rgba(30,41,59,.9);color:#94a3b8;border:1px solid #334155;padding:6px 12px;border-radius:4px;font-size:11px;cursor:pointer}
+.photo-viewer-overlay button.active{background:#f59e0b;color:#0f172a}
+/* NOTES TAB */
+.notes-area{display:flex;flex-direction:column;gap:12px;height:100%}
+.notes-list{flex:1;overflow-y:auto}
+.note-item{padding:8px 12px;border-left:3px solid #f59e0b;margin-bottom:8px;background:#1e293b;border-radius:0 6px 6px 0;font-size:11px}
+.note-item.critical{border-color:#dc2626}
+.note-item .ntype{font-size:9px;padding:1px 6px;border-radius:2px;margin-right:6px}
+.ntype.critical{background:#451a1a;color:#fca5a5}
+.ntype.high{background:#451a1a;color:#fca5a5}
+.note-item .nline{color:#f59e0b;font-weight:700;margin-right:6px}
+.note-input{display:flex;gap:8px}
+.note-input input{flex:1;background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:11px;padding:6px 10px;border-radius:4px}
+.note-input select{background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:10px;padding:6px;border-radius:4px}
+.note-input button{background:#f59e0b;color:#0f172a;border:none;padding:6px 14px;border-radius:4px;font-weight:600;cursor:pointer;font-size:11px}
+/* FINDINGS TAB */
+.findings-summary{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.finding-group{flex:1;min-width:140px;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:12px}
+.finding-group h4{font-size:10px;color:#94a3b8;text-transform:uppercase;margin-bottom:8px}
+.finding-group .item{font-size:10px;padding:3px 6px;margin-bottom:3px;border-left:2px solid transparent;cursor:pointer;border-radius:0 3px 3px 0}
+.finding-group .item.critical{border-color:#dc2626;color:#fca5a5}
+.finding-group .item.high{border-color:#f59e0b;color:#fde68a}
+.finding-group .item.medium{color:#94a3b8}
+.finding-group .item.low{color:#64748b}
+.finding-group .item:hover{background:#0f172a}
+/* CCC Checklist */
+.ccc-section{margin-bottom:16px;border:1px solid #334155;border-radius:6px;overflow:hidden}
+.ccc-section h4{font-size:11px;padding:10px 14px;background:#1e293b;color:#94a3b8;display:flex;justify-content:space-between;align-items:center}
+.ccc-item{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #1e293b;font-size:10px;cursor:pointer}
+.ccc-item:last-child{border-bottom:none}
+.ccc-item:hover{background:#1e293b}
+.ccc-item input[type=checkbox]{accent-color:#f59e0b;width:14px;height:14px;cursor:pointer}
+.ccc-item .ccc-label{flex:1}
+.ccc-item .ccc-detail{font-size:9px;color:#64748b}
+.ccc-item.checked{background:#14532d22}
+.ccc-item.checked .ccc-label{color:#86efac}
+.ccc-item.flagged{background:#451a1a22;border-left:2px solid #dc2626}
+.ccc-item.flagged .ccc-label{color:#fca5a5}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>IANet Audit</h1>
+  <span class="claim" id="claimInfo">No file loaded</span>
+  <span style="flex:1"></span>
+  <input type="file" id="fileInput" accept=".pdf,.zip" title="Load estimate">
+  <button onclick="loadFile()">LOAD</button>
+  <span class="badge ok" id="statusBadge" style="display:none">READY</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('ccc')">🔍 CCC Tabs</div>
+  <div class="tab" onclick="switchTab('estimate')">📋 Estimate <span class="count" id="lineCount">0</span></div>
+  <div class="tab" onclick="switchTab('photos')">📷 Photos <span class="count" id="photoTabCount">0</span></div>
+  <div class="tab" onclick="switchTab('findings')">⚠ Findings <span class="count" id="findingCount">0</span></div>
+  <div class="tab" onclick="switchTab('notes')">📝 Notes <span class="count" id="noteCount">0</span></div>
+</div>
+
+<div class="main">
+  <!-- CCC TABS -->
+  <div class="panel active" id="panel-ccc">
+    <p style="font-size:11px;color:#94a3b8;margin-bottom:16px">Open CCC and walk through each tab. Check off as verified.</p>
+    <div id="cccChecklist"></div>
+  </div>
+
+  <!-- ESTIMATE TAB -->
+  <div class="panel" id="panel-estimate">
+    <div class="est-summary" id="estSummary"></div>
+    <div style="padding:0 0 8px 0;display:flex;gap:8px">
+      <input type="text" id="lineFilter" placeholder="Filter lines..." style="flex:1;background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:10px;padding:4px 8px;border-radius:4px" oninput="filterLines()">
+      <button onclick="jumpToNextUnsupported()" style="background:#451a1a;color:#fca5a5;border:1px solid #991b1b;font-size:9px;padding:4px 8px;border-radius:4px;cursor:pointer">NEXT UNSUPPORTED →</button>
+    </div>
+    <div style="flex:1;overflow:auto">
+      <table class="line-table" id="lineTable"><thead><tr>
+        <th>Line</th><th>Op</th><th>Description</th><th>Part #</th><th class="price">Price</th><th class="hours">Labor</th><th class="hours">Paint</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- PHOTOS TAB -->
+  <div class="panel" id="panel-photos">
+    <div class="photo-toolbar">
+      <input type="file" id="photoAdder" accept="image/*,.pdf" multiple style="display:none">
+      <button onclick="document.getElementById('photoAdder').click()">+ ADD PHOTOS</button>
+      <button onclick="selectAllPhotos()">SELECT ALL</button>
+      <button class="danger" onclick="deleteSelected()">🗑 DELETE</button>
+      <span style="font-size:10px;color:#64748b;margin-left:8px" id="photoStats">0 photos</span>
+    </div>
+    <div id="photoContainer" style="flex:1;overflow-y:auto">
+      <div class="photo-grid" id="photoGrid"></div>
+    </div>
+  </div>
+
+  <!-- FINDINGS TAB -->
+  <div class="panel" id="panel-findings">
+    <div class="findings-summary" id="findingsSummary"></div>
+    <div style="flex:1;overflow-y:auto" id="findingsDetail"></div>
+  </div>
+
+  <!-- NOTES TAB -->
+  <div class="panel" id="panel-notes">
+    <div class="notes-area">
+      <div class="notes-list" id="notesList">
+        <p style="font-size:10px;color:#64748b">Notes generated from audit findings will appear here.</p>
+      </div>
+      <div class="note-input">
+        <select id="noteType"><option value="high">HIGH</option><option value="critical">CRITICAL</option><option value="medium">MEDIUM</option></select>
+        <input type="text" id="noteText" placeholder="Type a note...">
+        <input type="text" id="noteLine" placeholder="Line #" style="max-width:60px">
+        <button onclick="addNote()">ADD NOTE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Photo viewer overlay -->
+<div class="photo-viewer-overlay" id="photoViewer" onclick="document.getElementById('photoViewer').classList.remove('show')">
+  <img id="photoViewerImg" src="" onclick="event.stopPropagation()">
+  <div class="tools">
+    <button onclick="navViewer(-1)">◀</button>
+    <button onclick="zoomViewer(-0.25)">−</button>
+    <button onclick="zoomViewer(0.25)">+</button>
+    <button id="btnVInv" onclick="toggleVInv()">INVERT</button>
+    <button id="btnVBW" onclick="toggleVBW()">B&W</button>
+    <button class="nav-btn" onclick="navViewer(1)">▶</button>
+  <button onclick="exportReport()">📋 EXPORT PDF</button>
+</div>
+
+<script>
+const API = '/api/audit/full';
+const STORE = 'primoaudit_state';
+let data = null, lines = [], photos = [], findings = [], notes = [];
+let selectedPhotos = new Set(), viewerIdx = 0, vZoom = 1;
+
+document.getElementById('photoAdder').addEventListener('change', e => {
+  if(!data) return;
+  const files = Array.from(e.target.files);
+  files.forEach(f => {
+    if(f.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        photos.push({filename: f.name, data_url: ev.target.result, tags: new Set()});
+        renderPhotos();
+      };
+      reader.readAsDataURL(f);
+    }
+  });
+});
+
+async function loadFile() {
+  const f = document.getElementById('fileInput').files[0];
+  if(!f) return;
+  const form = new FormData(); form.append('estimate_pdf', f); form.append('nada_value', '0');
+  document.getElementById('statusBadge').style.display = 'inline';
+  document.getElementById('statusBadge').textContent = 'LOADING...';
+  document.getElementById('statusBadge').className = 'badge warn';
+  
+  try {
+    const r = await fetch(API, {method:'POST', body: form});
+    data = await r.json();
+    photos = (data.extracted_photos||[]).map(p => ({...p, tags: new Set(), selected: false}));
+    lines = [];
+    for(const pp of (data.claim_panels||[]))
+      for(const row of (pp.rows||[]))
+        if(!row.is_header && !['include','','included'].includes((row.operation_label||'').toLowerCase()))
+          lines.push(row);
+    
+    findings = [];
+    for(const cat of ['remove','fix','verify','attach','review'])
+      for(const f of (data.findings||{})[cat]||[])
+        findings.push({...f, category: cat});
+    
+    document.getElementById('claimInfo').innerHTML = 
+      `<b>${data.claim_number||'?'}</b> | ${data.vehicle?.year||''} ${data.vehicle?.make||''} ${data.vehicle?.model||''} | ${data.shop?.state||''} | ${lines.length} lines`;
+    document.getElementById('statusBadge').textContent = 'READY';
+    document.getElementById('statusBadge').className = 'badge ok';
+    saveState();
+    
+    renderCCC();
+    renderEstimate();
+    renderPhotos();
+    renderFindings();
+    generateNotes();
+    updateTabCounts();
+  } catch(e) {
+    document.getElementById('statusBadge').textContent = 'ERROR';
+  }
+}
+
+function renderCCC() {
+  const vehicle = data?.vehicle || {};
+  const shop = data?.shop || {};
+  const meta = data || {};
+  
+  const cccTabs = [
+    { section: 'CLAIM', items: [
+      {id:'facts', label:'Facts of Loss', detail: meta.type_of_loss || 'Verify in CCC', flagged: !meta.type_of_loss},
+      {id:'type', label:'Claim Type / Deductible', detail: 'Verify type and deductible in CCC', flagged: false},
+    ]},
+    { section: 'ADMIN', items: [
+      {id:'contacts', label:'Contacts', detail: 'Verify contact type and insurance info', flagged: false},
+      {id:'shop', label:'Repair Facility', detail: `${shop.name || 'Owner\\'s Choice'} | ${shop.address || 'Verify address'}`, flagged: !shop.name},
+    ]},
+    { section: 'VEHICLE', items: [
+      {id:'vin', label:'VIN', detail: vehicle.vin || 'Verify in CCC', flagged: !vehicle.vin},
+      {id:'odo', label:'Odometer', detail: vehicle.mileage ? `${vehicle.mileage.toLocaleString()} mi` : 'Verify', flagged: !vehicle.mileage},
+      {id:'prod', label:'Production Date', detail: vehicle.production_date || 'Verify', flagged: !vehicle.production_date},
+      {id:'color', label:'Color / License Plate', detail: 'Verify in CCC', flagged: false},
+      {id:'poi', label:'Point of Impact', detail: 'Verify matches damage', flagged: false},
+      {id:'condition', label:'Repairable Condition / Notes', detail: 'Verify prior damage notes', flagged: false},
+    ]},
+    { section: 'ESTIMATE', items: [
+      {id:'audit', label:'Audit Report', detail: `${findings.length} findings — review in Findings tab`, flagged: findings.length > 0},
+      {id:'rates', label:'Labor Rates / Tax', detail: shop.state ? `State: ${shop.state} — verify Rates tab` : 'Verify', flagged: false},
+      {id:'settle', label:'Settlements', detail: 'Verify repairable vs total loss', flagged: false},
+      {id:'props', label:'Properties', detail: 'Verify refinish/materials/TL thresholds', flagged: false},
+    ]},
+    { section: 'PHOTOS', items: [
+      {id:'photos', label:'Photo Documentation', detail: `${photos.length} photos loaded — verify all required`, flagged: photos.length === 0},
+      {id:'vinphoto', label:'VIN Photo', detail: 'Dashboard VIN required', flagged: true},
+      {id:'odophoto', label:'Odometer Photo', detail: 'Mileage documentation required', flagged: true},
+      {id:'board', label:'Hail Board / Striped Board', detail: 'Required on hail claims', flagged: false},
+    ]},
+  ];
+  
+  document.getElementById('cccChecklist').innerHTML = cccTabs.map(s => `
+    <div class="ccc-section">
+      <h4>${s.section} <span style="font-size:9px;font-weight:400">${s.items.filter(i=>!localStorage['ccc_'+i.id]).length}/${s.items.length} remaining</span></h4>
+      ${s.items.map(i => {
+        const checked = localStorage['ccc_'+i.id] === 'true';
+        return `<div class="ccc-item${checked?' checked':''}${i.flagged && !checked?' flagged':''}" onclick="toggleCCC('${i.id}', this)">
+          <input type="checkbox" ${checked?'checked':''}>
+          <span class="ccc-label">${i.label}</span>
+          <span class="ccc-detail">${i.detail||''}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `).join('');
+}
+function toggleCCC(id, el) {
+  const cb = el.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  localStorage['ccc_'+id] = cb.checked;
+  el.classList.toggle('checked', cb.checked);
+  saveState();
+}
+function filterLines() {
+  const q = (document.getElementById('lineFilter')?.value || '').toLowerCase();
+  document.querySelectorAll('#lineTable tbody tr').forEach(tr => {
+    tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+function jumpToNextUnsupported() {
+  const unsup = lines.filter(l => !covered.has(l.line_no) && (l.operation_label||'').toLowerCase() !== 'remove & install');
+  if(!unsup.length) return alert('All lines supported!');
+  const first = unsup[0];
+  switchTab('estimate');
+  const el = document.getElementById('li-'+first.line_no) || document.querySelector(`#lineTable tbody tr td.ln`);
+  if(el) { el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.background = '#f59e0b22'; setTimeout(()=>el.style.background='',1500); }
+}
+function renderEstimate() {
+  const total = lines.reduce((s,l) => s + (l.financial_signature?.part_price||0) + (l.financial_signature?.labor_amount_total||0), 0);
+  document.getElementById('estSummary').innerHTML = `
+    <div class="est-card"><div class="label">Estimate Total</div><div class="value">$${total.toLocaleString()}</div></div>
+    <div class="est-card"><div class="label">Lines</div><div class="value">${lines.length}</div></div>
+    <div class="est-card"><div class="label">State</div><div class="value">${data.shop?.state||'?'}</div></div>
+    <div class="est-card"><div class="label">Shop</div><div class="value" style="font-size:12px">${(data.shop?.name||'?').substring(0,20)}</div></div>
+  `;
+  
+  document.getElementById('lineTable').querySelector('tbody').innerHTML = lines.map(l => {
+    const fs = l.financial_signature || {};
+    const flagged = findings.some(f => (f.lines||[]).includes(l.line_no));
+    return `<tr class="${flagged?'flag':''}">
+      <td class="ln">${l.line_no}</td>
+      <td style="font-size:9px">${(l.operation_label||'').substring(0,4)}</td>
+      <td>${(l.description||'').substring(0,50)}</td>
+      <td>${(l.part_number||'').substring(0,15)}</td>
+      <td class="price">${fs.part_price? '$'+fs.part_price.toLocaleString():''}</td>
+      <td class="hours">${fs.labor_hours_total||''}</td>
+      <td class="hours">${fs.paint_hours_total||''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPhotos() {
+  document.getElementById('photoGrid').innerHTML = photos.map((p,i) => `
+    <div class="photo-card" style="${selectedPhotos.has(i)?'border-color:#f59e0b':''}">
+      <img src="${p.data_url}" onclick="openViewer(${i})" onerror="this.style.display='none'">
+      <div class="info">
+        <input class="fname" value="${p.filename}" onchange="renamePhoto(${i},this.value)">
+        <div class="tags">
+          ${lines.slice(0,20).map(l => `<span class="tag${(p.tags||new Set()).has(l.line_no)?' active':''}" onclick="togglePhotoTag(${i},${l.line_no})">L${l.line_no}</span>`).join('')}
+          ${lines.length > 20 ? '<span style="font-size:8px;color:#64748b">+more</span>' : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('photoStats').textContent = `${photos.length} photos`;
+}
+
+function renamePhoto(i, name) { photos[i].filename = name || `Photo_${i+1}`; }
+function togglePhotoTag(pi, ln) {
+  if(!photos[pi].tags) photos[pi].tags = new Set();
+  photos[pi].tags.has(ln) ? photos[pi].tags.delete(ln) : photos[pi].tags.add(ln);
+  renderPhotos();
+}
+function selectAllPhotos() {
+  if(selectedPhotos.size === photos.length) selectedPhotos.clear();
+  else photos.forEach((_,i) => selectedPhotos.add(i));
+  renderPhotos();
+}
+function deleteSelected() {
+  photos = photos.filter((_,i) => !selectedPhotos.has(i));
+  selectedPhotos.clear();
+  renderPhotos();
+}
+
+// Photo viewer
+function openViewer(i) { viewerIdx = i; vZoom = 1; refreshViewer(); document.getElementById('photoViewer').classList.add('show'); }
+function navViewer(d) { viewerIdx = Math.max(0, Math.min(photos.length-1, viewerIdx+d)); refreshViewer(); }
+function zoomViewer(d) { vZoom = Math.max(0.5, Math.min(3, vZoom+d)); document.getElementById('photoViewerImg').style.transform = `scale(${vZoom})`; }
+function toggleVInv() {
+  const b = document.getElementById('btnVInv'); b.classList.toggle('active');
+  applyVFilters();
+}
+function toggleVBW() {
+  const b = document.getElementById('btnVBW'); b.classList.toggle('active');
+  applyVFilters();
+}
+function applyVFilters() {
+  const f = [];
+  if(document.getElementById('btnVInv').classList.contains('active')) f.push('invert(1)');
+  if(document.getElementById('btnVBW').classList.contains('active')) f.push('grayscale(1)');
+  document.getElementById('photoViewerImg').style.filter = f.join(' ');
+}
+function refreshViewer() {
+  if(!photos[viewerIdx]) return;
+  document.getElementById('photoViewerImg').src = photos[viewerIdx].data_url;
+  document.getElementById('photoViewerImg').style.transform = 'scale(1)';
+  document.getElementById('photoViewerImg').style.filter = '';
+  document.getElementById('btnVInv').classList.remove('active');
+  document.getElementById('btnVBW').classList.remove('active');
+  vZoom = 1;
+}
+
+// Findings tab
+function renderFindings() {
+  const groups = {remove:'✏ Remove',fix:'🔧 Fix',verify:'🔍 Verify',attach:'📎 Attach',review:'📋 Review'};
+  document.getElementById('findingsSummary').innerHTML = Object.entries(groups).map(([k,label]) => {
+    const items = findings.filter(f => f.category === k);
+    return items.length ? `<div class="finding-group"><h4>${label} (${items.length})</h4>
+      ${items.map(f => `<div class="item ${f.severity||'low'}">${(f.lines||[]).map(l=>'L'+l).join(' ')} ${f.summary}</div>`).join('')}
+    </div>` : '';
+  }).join('');
+  
+  document.getElementById('findingsDetail').innerHTML = findings.map(f => `
+    <div class="note-item ${f.severity==='critical'?'critical':''}" style="font-size:10px">
+      <span class="ntype ${f.severity}">${f.severity||'low'}</span>
+      <span class="nline">${(f.lines||[]).map(l=>'L'+l).join(' ')}</span>
+      ${f.summary}
+    </div>
+  `).join('');
+}
+
+// Notes tab
+function generateNotes() {
+  notes = [];
+  if(data?.tl_analysis?.status?.includes('TOTAL')) notes.push({type:'critical',line:'',text:`POTENTIAL TOTAL LOSS — ${data.tl_analysis.damage_pct}% of NADA. Escalate to carrier. Do NOT authorize repair.`});
+  for(const f of findings.filter(f => f.category === 'remove'))
+    notes.push({type:'high', line: (f.lines||[]).map(l=>'L'+l).join(' '), text: f.summary});
+  for(const f of findings.filter(f => f.category === 'fix'))
+    notes.push({type:'high', line: (f.lines||[]).map(l=>'L'+l).join(' '), text: f.summary});
+  renderNotes();
+}
+function addNote() {
+  const t = document.getElementById('noteText').value.trim();
+  if(!t) return;
+  notes.push({
+    type: document.getElementById('noteType').value,
+    line: document.getElementById('noteLine').value,
+    text: t,
+  });
+  document.getElementById('noteText').value = '';
+  document.getElementById('noteLine').value = '';
+  renderNotes();
+}
+function saveState() {
+  const state = {
+    claimNumber: data?.claim_number || '', notes, findings,
+    cccChecks: Object.keys(localStorage).filter(k=>k.startsWith('ccc_')).reduce((a,k)=>({...a,[k]:localStorage[k]}),{}),
+    photoTags: photos.map(p => ({filename: p.filename, tags: [...(p.tags||[])]})),
+    savedAt: new Date().toISOString(),
+  };
+  localStorage.setItem(STORE, JSON.stringify(state));
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    if(!raw) return false;
+    const state = JSON.parse(raw);
+    // Restore CCC checks
+    for(const [k,v] of Object.entries(state.cccChecks||{})) localStorage[k] = v;
+    if(state.claimNumber && state.claimNumber === data?.claim_number) {
+      notes = state.notes || [];
+      if(state.photoTags) state.photoTags.forEach((pt,i) => {
+        if(photos[i]) photos[i].tags = new Set(pt.tags||[]);
+      });
+    }
+    return true;
+  } catch(e) { return false; }
+}
+function renderNotes() {
+  document.getElementById('notesList').innerHTML = notes.map((n,i) => `
+    <div class="note-item ${n.type==='critical'?'critical':''}">
+      <span class="ntype ${n.type}">${n.type.toUpperCase()}</span>
+      ${n.line?`<span class="nline">${n.line}</span>`:''}
+      ${n.text}
+      <span style="float:right;color:#64748b;font-size:9px;cursor:pointer" onclick="notes.splice(${i},1);renderNotes()">✕</span>
+    </div>
+  `).join('');
+  document.getElementById('noteCount').textContent = notes.length;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab:has-text("${name}")`)?.classList.add('active');
+  document.getElementById('panel-'+name).classList.add('active');
+}
+// Tab switching
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', function() {
+    const text = this.textContent.toLowerCase();
+    let name = 'notes';
+    if (text.includes('ccc')) name = 'ccc';
+    else if (text.includes('estimate')) name = 'estimate';
+    else if (text.includes('photo')) name = 'photos';
+    else if (text.includes('finding')) name = 'findings';
+    document.querySelectorAll('.tab').forEach(tb => tb.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('panel-'+name).classList.add('active');
+  });
+});
+
+function updateTabCounts() {
+  document.getElementById('lineCount').textContent = lines.length;
+  document.getElementById('photoTabCount').textContent = photos.length;
+  document.getElementById('findingCount').textContent = findings.length;
+  document.getElementById('noteCount').textContent = notes.length;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies for PyMuPDF and psycopg2
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install specific Python packages
+# Assuming requirements.txt is mapped but we also ensure structural additions for deployed PostgreSQL + S3
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    fastapi[standard]>=0.100.0 \
+    uvicorn>=0.23.0 \
+    psycopg2-binary>=2.9.9 \
+    boto3>=1.28.0
+
+# Copy application source
+COPY backend/ .
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

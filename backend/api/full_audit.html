@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrimoAuditAI — Full Audit</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.header{background:#1e293b;border-bottom:1px solid #334155;padding:16px 24px}
+.header h1{color:#f59e0b;font-size:18px}
+.header p{color:#64748b;font-size:11px;margin-top:2px}
+.wizard{max-width:800px;margin:0 auto;padding:24px}
+.step{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:20px;margin-bottom:16px;display:none}
+.step.active{display:block}
+.step h2{font-size:15px;color:#f59e0b;margin-bottom:4px}
+.step .sub{font-size:11px;color:#94a3b8;margin-bottom:16px}
+.step input,.step select{width:100%;padding:10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;margin-bottom:12px}
+.step label{font-size:11px;color:#94a3b8;display:block;margin-bottom:4px}
+.btn{padding:10px 24px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none}
+.btn-primary{background:#f59e0b;color:#0f172a}
+.btn-secondary{background:#1e293b;color:#94a3b8;border:1px solid #334155}
+.btn-success{background:#16a34a;color:#fff}
+.btn-danger{background:#dc2626;color:#fff}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.row{display:flex;gap:12px;margin-top:16px}
+.confirm-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;margin-bottom:8px;font-size:12px}
+.confirm-item.confirmed{background:#14532d;border-color:#16a34a}
+.confirm-item.issue{background:#451a1a;border-color:#dc2626}
+.progress{display:flex;gap:4px;margin-bottom:24px}
+.progress div{flex:1;height:3px;background:#334155;border-radius:2px}
+.progress div.done{background:#f59e0b}
+.progress div.current{background:#f59e0b;box-shadow:0 0 8px #f59e0b}
+.results{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:20px;margin-bottom:16px}
+.results h3{font-size:13px;color:#f59e0b;margin-bottom:12px}
+.finding{border:1px solid #334155;border-radius:6px;padding:8px 12px;margin-bottom:6px;font-size:11px;display:flex;gap:8px;align-items:center}
+.finding .ln{color:#f59e0b;font-weight:700;min-width:50px}
+.critical{background:#451a1a;border-color:#991b1b;color:#fca5a5}
+.high{background:#1e293b;border-color:#991b1b;color:#fca5a5}
+.medium{background:#1e293b;border-color:#854d0e;color:#fde68a}
+.low{background:#1e293b;border-color:#334155;color:#94a3b8}
+.notes-box{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:16px;font-family:monospace;font-size:11px;line-height:1.6;white-space:pre-wrap;color:#e2e8f0}
+.note-item{border-left:3px solid #f59e0b;padding:8px 12px;margin-bottom:8px;background:#0f172a;border-radius:0 6px 6px 0;font-size:12px}
+.note-item.critical{border-color:#dc2626}
+.note-item.high{border-color:#f59e0b}
+.step-nav{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+.step-count{font-size:11px;color:#64748b}
+.tl-good{color:#86efac}
+.tl-warn{color:#fde68a}
+.tl-bad{color:#fca5a5}
+</style>
+</head>
+<body>
+<div class="header"><h1>PrimoAuditAI — Full Audit</h1><p>Guided pre-submission workflow</p></div>
+<div class="wizard">
+  <div class="progress" id="progress"></div>
+
+  <!-- Step 1: Upload -->
+  <div class="step active" id="step-upload">
+    <h2>1. Upload Estimate</h2>
+    <p class="sub">Upload the estimate PDF or CCC ZIP file</p>
+    <input type="file" id="pdfFile" accept=".pdf,.zip">
+    <div class="row">
+      <button class="btn btn-primary" onclick="nextStep()" id="uploadNext" disabled>NEXT →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: NADA -->
+  <div class="step" id="step-nada">
+    <h2>2. NADA Value</h2>
+    <p class="sub">Enter the NADA Normal Trade-In value for total loss comparison</p>
+    <input type="number" id="nadaValue" placeholder="e.g. 28500">
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="runAudit()" id="nadaNext">RUN FULL AUDIT →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Photos -->
+  <div class="step" id="step-photos-upload">
+    <h2>3. Upload Damage Photos</h2>
+    <p class="sub">Attach all damage photos for AI analysis. PDF photos will be extracted automatically.</p>
+    <input type="file" id="photoFiles" accept="image/*,.pdf" multiple>
+    <p style="font-size:10px;color:#64748b;margin-top:4px" id="photoCount">No photos selected — accepts JPG, PNG, or PDF with embedded images</p>
+    <div id="extractedPreview" style="margin-top:12px"></div>
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="nextStep()">PHOTOS ADDED →</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Photo-to-Line Matching -->
+  <div class="step" id="step-photo-match">
+    <h2>4. Photo-to-Line Matching</h2>
+    <p class="sub">Review each photo and check which estimate lines it supports</p>
+    <p style="font-size:10px;color:#f59e0b;margin-bottom:12px">IF THE PHOTOS DON'T SHOW IT, DO NOT WRITE IT.</p>
+    <div id="photoMatchList"></div>
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="finishPhotoMatch()">ALL REVIEWED →</button>
+    </div>
+  </div>
+
+  <!-- Step 5: CCC Tab Checklist -->
+  <div class="step" id="step-checklist">
+    <h2>4. CCC Tabs — Verify Each</h2>
+    <p class="sub">Walk through each CCC tab and confirm</p>
+    <div id="checklistItems"></div>
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="nextStep()">ALL CONFIRMED →</button>
+    </div>
+  </div>
+
+  <!-- Step 9: Photo Issues -->
+  <div class="step" id="step-photos">
+    <h2>5. Photo Alignment</h2>
+    <p class="sub">Lines that may lack photo support</p>
+    <div id="photoIssues"></div>
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="nextStep()">REVIEWED →</button>
+    </div>
+  </div>
+
+  <!-- Step 10: Findings Review -->
+  <div class="step" id="step-findings">
+    <h2>6. Findings Review</h2>
+    <p class="sub">Review and dismiss findings</p>
+    <div id="findingsReview"></div>
+    <div class="row">
+      <button class="btn btn-secondary" onclick="prevStep()">← BACK</button>
+      <button class="btn btn-primary" onclick="nextStep()">REVIEWED →</button>
+    </div>
+  </div>
+
+  <!-- Step 11: Final — TL + Notes -->
+  <div class="step" id="step-final">
+    <h2>7. Final Summary & Appraiser Notes</h2>
+    <p class="sub">Review and send to appraiser</p>
+    <div class="results" id="tlResult"></div>
+    <div class="results">
+      <h3>Appraiser Notes (Ready to Send)</h3>
+      <div id="appraiserNotes"></div>
+    </div>
+    <button class="btn btn-success" style="width:100%" onclick="copyNotes()">COPY NOTES TO CLIPBOARD</button>
+  </div>
+</div>
+
+<script>
+const API = '/api/audit/full';
+let auditData = null;
+let currentStep = 0;
+let steps = ['upload','nada','photos-upload','photo-match','checklist','photos','findings','final'];
+
+let pdfFile = null;
+let photoFiles = [];
+document.getElementById('photoFiles')?.addEventListener('change', e => {
+  photoFiles = Array.from(e.target.files);
+  document.getElementById('photoCount').textContent = photoFiles.length + ' file(s) selected';
+  // Show previews for image files
+  const preview = document.getElementById('extractedPreview');
+  preview.innerHTML = '';
+  photoFiles.forEach((f,i) => {
+    if(f.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(f);
+      img.style = 'width:80px;height:60px;object-fit:cover;border-radius:4px;margin:2px;border:1px solid #334155';
+      img.title = f.name;
+      preview.appendChild(img);
+    } else if(f.name.toLowerCase().endsWith('.pdf')) {
+      const tag = document.createElement('span');
+      tag.style = 'display:inline-block;background:#1e293b;color:#f59e0b;padding:4px 8px;border-radius:4px;margin:2px;font-size:10px;border:1px solid #f59e0b';
+      tag.textContent = 'PDF: '+f.name+' (images will be extracted)';
+      preview.appendChild(tag);
+    }
+  });
+});
+let lineSupports = {}; // {photoIndex: [line_numbers]}
+
+function finishPhotoMatch() {
+  const unmatched = [];
+  if(auditData) {
+    for(const p of (auditData.claim_panels||[])) {
+      for(const r of (p.rows||[])) {
+        if(r.is_header) continue;
+        const op = (r.operation_label||'').toLowerCase();
+        if(['include','','included'].includes(op)) continue;
+        const ln = r.line_no;
+        let supported = false;
+        for(const [pi,lines] of Object.entries(lineSupports)) {
+          if(lines.includes(ln)) { supported = true; break; }
+        }
+        if(!supported) {
+          const div = document.getElementById('pm-'+ln);
+          if(div) div.parentElement.style.borderColor = '#dc2626';
+        }
+      }
+    }
+  }
+  nextStep();
+}
+
+function buildPhotoMatch() {
+  const list = document.getElementById('photoMatchList');
+  if(!photoFiles.length) { list.innerHTML = '<p>No photos uploaded</p>'; return; }
+  
+  // Get estimate lines
+  const lines = [];
+  for(const p of (auditData.claim_panels||[])) {
+    for(const r of (p.rows||[])) {
+      if(r.is_header) continue;
+      const op = (r.operation_label||'').toLowerCase();
+      if(['include','','included'].includes(op)) continue;
+      lines.push({no: r.line_no, op: op, desc: r.description||''});
+    }
+  }
+  
+  let html = '';
+  const extractedPhotos = auditData.extracted_photos || [];
+  
+  // Use extracted photos if available (from PDF), otherwise uploaded files
+  const photos = extractedPhotos.length ? extractedPhotos : photoFiles;
+  photos.forEach((f, i) => {
+    const isImg = f.data_url || (f.type && f.type.startsWith('image/'));
+    const name = f.filename || f.name || 'Photo '+(i+1);
+    if(!f.type.startsWith('image/') && !f.name.toLowerCase().endsWith('.pdf')) return;
+    lineSupports[i] = lineSupports[i] || [];
+    
+    html += `<div style="margin-bottom:16px;border:1px solid #334155;border-radius:6px;padding:12px">`;
+    html += `<strong style="font-size:11px;color:#f59e0b">Photo ${i+1}: ${name}</strong>`;
+    if(f.data_url) {
+      html += `<img src="${f.data_url}" style="max-width:200px;max-height:150px;border-radius:4px;margin:4px 0;border:1px solid #334155" onerror="this.style.display='none'">`;
+    }
+    html += `<p style="font-size:10px;color:#94a3b8;margin:4px 0">Check lines this photo supports:</p>`;
+    html += `<div style="display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto">`;
+    for(const l of lines.slice(0,30)) {
+      html += `<label style="font-size:10px;display:flex;align-items:center;gap:3px;background:#0f172a;padding:2px 6px;border-radius:4px;cursor:pointer;white-space:nowrap" id="pm-${l.no}">`;
+      html += `<input type="checkbox" onchange="toggleLineSupport(${i},${l.no},this.checked)" style="margin:0">`;
+      html += `L${l.no}: ${l.op} ${l.desc.substring(0,25)}`;
+      html += `</label>`;
+    }
+    html += `</div></div>`;
+  });
+  list.innerHTML = html || '<p>Upload photos first</p>';
+}
+
+function toggleLineSupport(photoIdx, lineNo, checked) {
+  if(!lineSupports[photoIdx]) lineSupports[photoIdx] = [];
+  if(checked) { if(!lineSupports[photoIdx].includes(lineNo)) lineSupports[photoIdx].push(lineNo); }
+  else { lineSupports[photoIdx] = lineSupports[photoIdx].filter(l => l !== lineNo); }
+}
+
+document.getElementById('pdfFile').addEventListener('change', e => {
+  pdfFile = e.target.files[0];
+  document.getElementById('uploadNext').disabled = !pdfFile;
+});
+
+function showStep(id) {
+  // Auto-skip photo steps when no photos
+  if(!photoFiles.length && ['photos-upload','photo-match','photos'].includes(id)) {
+    const idx = steps.indexOf(id);
+    const next = steps.slice(idx+1).find(s => !['photos-upload','photo-match','photos'].includes(s));
+    if(next) { showStep(next); return; }
+  }
+  if(id === 'photo-match' && auditData) buildPhotoMatch();
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('step-'+id).classList.add('active');
+  updateProgress(id);
+}
+
+function updateProgress(id) {
+  const idx = steps.indexOf(id);
+  const html = steps.map((s,i) => `<div class="${i<idx?'done':i===idx?'current':''}"></div>`).join('');
+  document.getElementById('progress').innerHTML = html;
+}
+
+function nextStep() {
+  currentStep = Math.min(currentStep + 1, steps.length - 1);
+  showStep(steps[currentStep]);
+}
+function prevStep() {
+  currentStep = Math.max(currentStep - 1, 0);
+  showStep(steps[currentStep]);
+}
+
+async function runAudit() {
+  const nada = document.getElementById('nadaValue').value;
+  if(!pdfFile) return alert('Upload estimate first');
+  
+  const btn = document.getElementById('nadaNext');
+  btn.disabled = true;
+  btn.textContent = 'PROCESSING...';
+  const form = new FormData();
+  form.append('estimate_pdf', pdfFile);
+  for(const p of photoFiles) form.append('photos', p);
+  if(nada) form.append('nada_value', nada);
+  
+  try {
+    const res = await fetch(API, {method:'POST', body:form});
+    auditData = await res.json();
+    buildChecklist();
+    buildPhotos();
+    buildFindings();
+    buildFinal();
+    nextStep();
+  } catch(e) {
+    alert('Error: '+e.message);
+  }
+}
+
+function buildChecklist() {
+  const items = auditData.ccc_checklist || [];
+  const html = items.map((c,i) => `
+    <div class="confirm-item" id="ci-${i}" onclick="toggleCheck(${i})">
+      <input type="checkbox" id="cb-${i}">
+      <div><strong>${c.tab}</strong><br><span style="font-size:10px;color:#94a3b8">${c.check}</span></div>
+    </div>
+  `).join('');
+  document.getElementById('checklistItems').innerHTML = html || '<p>No checklist items</p>';
+}
+
+function toggleCheck(i) {
+  document.getElementById('cb-'+i).checked = !document.getElementById('cb-'+i).checked;
+  document.getElementById('ci-'+i).classList.toggle('confirmed', document.getElementById('cb-'+i).checked);
+}
+
+function buildPhotos() {
+  const issues = auditData.photo_issues || [];
+  if(!issues.length) {
+    document.getElementById('photoIssues').innerHTML = '<p style="color:#86efac">No photo issues detected.</p>';
+    return;
+  }
+  const html = issues.map(p => `
+    <div class="confirm-item issue">
+      <span class="ln" style="color:#fca5a5">L${p.line_no}</span>
+      <span>${p.operation}: ${p.description}</span>
+    </div>
+  `).join('');
+  document.getElementById('photoIssues').innerHTML = html + `<p style="font-size:11px;color:#94a3b8;margin-top:8px">${issues.length} unsupported operations. IF THE PHOTOS DON'T SHOW IT, DO NOT WRITE IT.</p>`;
+}
+
+function buildFindings() {
+  const f = auditData.findings;
+  let html = '';
+  const labels = {state:'State Compliance',remove:'Must Remove',fix:'Must Fix',verify:'Must Verify',attach:'Must Attach',review:'Review'};
+  for(const [cat,label] of Object.entries(labels)) {
+    const items = f[cat]||[];
+    if(!items.length) continue;
+    html += `<h3 style="font-size:12px;margin:16px 0 8px;color:#94a3b8">${label} (${items.length})</h3>`;
+    for(const it of items) {
+      const ln = it.lines&&it.lines[0] ? 'L'+it.lines.join(',') : '';
+      html += `<div class="finding ${it.severity||'low'}">
+        ${ln?`<span class="ln">${ln}</span>`:''}
+        <span>${it.summary}</span>
+        <span style="margin-left:auto;font-size:10px;opacity:.6">${Math.round((it.confidence||0.7)*100)}%</span>
+      </div>`;
+    }
+  }
+  document.getElementById('findingsReview').innerHTML = html || '<p style="color:#86efac">No findings.</p>';
+}
+
+function buildFinal() {
+  const tl = auditData.tl_analysis||{};
+  const cls = tl.status.includes('TOTAL') ? 'tl-bad' : tl.status.includes('Approach') ? 'tl-warn' : 'tl-good';
+  document.getElementById('tlResult').innerHTML = `
+    <h3>Total Loss Analysis</h3>
+    <p><strong>NADA Value:</strong> $${(tl.nada_value||0).toLocaleString()}</p>
+    <p><strong>Estimate:</strong> $${(tl.estimate_total||0).toLocaleString()}</p>
+    <p><strong>Damage %:</strong> ${tl.damage_pct||0}% (threshold: ${tl.tl_threshold_pct||75}%)</p>
+    <p class="${cls}" style="font-weight:700;margin-top:8px">${tl.status||'N/A'}</p>
+  `;
+  
+  const notes = auditData.appraiser_notes||[];
+  document.getElementById('appraiserNotes').innerHTML = notes.map(n => `
+    <div class="note-item ${(n.type||'').toLowerCase()}">
+      <strong>${n.type}</strong>${n.line?' — L'+n.line:''}<br>${n.note}
+    </div>
+  `).join('');
+}
+
+function copyNotes() {
+  const notes = auditData?.appraiser_notes||[];
+  const text = notes.map(n => `[${n.type}]${n.line?' L'+n.line:''}: ${n.note}`).join('\n\n');
+  navigator.clipboard.writeText(text).then(() => alert('Notes copied!'));
+}
+</script>
+</body>
+</html>

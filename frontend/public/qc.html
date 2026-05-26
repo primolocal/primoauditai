@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrimoAuditAI QC Report</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}
+.header{background:#1e293b;border-bottom:1px solid #334155;padding:16px 24px}
+.header h1{color:#f59e0b;font-size:20px}
+.header p{color:#64748b;font-size:12px;margin-top:4px}
+.upload{display:flex;gap:12px;padding:20px 24px;border-bottom:1px solid #1e293b;align-items:end}
+.upload label{color:#94a3b8;font-size:12px;display:block;margin-bottom:6px}
+.upload input{color:#cbd5e1;font-size:13px}
+.upload input::file-selector-button{padding:8px 16px;background:#1e293b;color:#f59e0b;border:1px solid #334155;border-radius:6px;cursor:pointer;margin-right:12px}
+.btn{padding:10px 24px;background:#f59e0b;color:#0f172a;font-weight:700;border:none;border-radius:6px;cursor:pointer;font-size:13px}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.btn:hover:not(:disabled){background:#d97706}
+.claim{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px 20px;margin:20px 24px}
+.claim h2{font-size:16px;color:#fff}
+.claim .sub{font-size:11px;color:#94a3b8;margin-top:4px}
+.claim .count{float:right;text-align:right}
+.claim .count span{font-size:28px;font-weight:700;color:#f59e0b;display:block}
+.claim .count p{font-size:11px;color:#64748b}
+.cat{margin:0 24px 20px}
+.cat h3{font-size:13px;color:#cbd5e1;border-bottom:1px solid #1e293b;padding-bottom:8px;margin-bottom:12px}
+.finding{border:1px solid #334155;border-radius:6px;padding:12px 16px;margin-bottom:8px;font-size:12px;display:flex;gap:12px;align-items:flex-start}
+.finding .ln{color:#f59e0b;font-weight:700;white-space:nowrap;min-width:60px;font-size:11px}
+.critical{background:#451a1a;border-color:#991b1b;color:#fca5a5}
+.high{background:#1e293b;border-color:#991b1b;color:#fca5a5}
+.medium{background:#1e293b;border-color:#854d0e;color:#fde68a}
+.low{background:#1e293b;border-color:#334155;color:#94a3b8}
+.error{color:#f87171;font-size:12px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>PrimoAuditAI QC Report</h1>
+  <p>Upload estimate PDF or CCC ZIP — instant compliance check in under a second</p>
+</div>
+<div class="upload">
+  <div style="flex:1">
+    <label>Estimate PDF or CCC ZIP</label>
+    <input type="file" id="fileInput" accept=".pdf,.zip">
+  </div>
+  <button class="btn" id="runBtn" onclick="runQC()">RUN QC</button>
+</div>
+<div id="error" class="error" style="padding:0 24px"></div>
+<div id="results"></div>
+<script>
+const API = 'https://primoauditaiqc-production.up.railway.app/api/qc';
+const LABELS = {
+  state: '⚖️ STATE COMPLIANCE',
+  remove: '❌ MUST REMOVE',
+  fix: '✏️ MUST FIX',
+  verify: '📋 MUST VERIFY',
+  attach: '📎 MUST ATTACH',
+  review: '🔍 REVIEW'
+};
+async function runQC() {
+  const file = document.getElementById('fileInput').files[0];
+  if(!file) return;
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('runBtn').textContent = 'ANALYZING...';
+  document.getElementById('error').textContent = '';
+  try {
+    const form = new FormData(); form.append('estimate_pdf', file);
+    const res = await fetch(API, {method:'POST', body:form});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const d = await res.json();
+    render(d);
+  } catch(e) {
+    document.getElementById('error').textContent = 'Error: '+e.message;
+  } finally {
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('runBtn').textContent = 'RUN QC';
+  }
+}
+function render(d) {
+  let html = `<div class="claim">
+    <div class="count"><span>${d.total_findings}</span><p>findings</p></div>
+    <h2>${d.is_supplement?'SUPPLEMENT':'ESTIMATE'} QC: ${d.claim_number}</h2>
+    <p class="sub">${d.vehicle.year||'?'} ${d.vehicle.make||''} ${(d.vehicle.model||'').slice(0,40)}${d.vehicle.mileage?' | '+Number(d.vehicle.mileage).toLocaleString()+' mi':''}${d.shop.state?' | '+d.shop.state:''}</p>
+    ${d.shop.name?`<p class="sub">Shop: ${d.shop.name}</p>`:''}
+  </div>`;
+  for(const [cat,label] of Object.entries(LABELS)) {
+    const items = d.findings[cat];
+    if(!items||!items.length) continue;
+    html += `<div class="cat"><h3>${label} (${items.length})</h3>`;
+    for(const f of items) {
+      const ln = f.lines&&f.lines[0] ? 'L'+f.lines.join(', ') : '';
+      html += `<div class="finding ${f.severity||'low'}">
+        ${ln?`<span class="ln">${ln}</span>`:''}
+        <span>${f.summary}</span>
+        <span class="conf" style="margin-left:auto;font-size:10px;opacity:.6">${Math.round((f.confidence||0.7)*100)}%</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  // Passed section at bottom
+  if(d.passed && d.passed.length) {
+    html += `<div class=\"cat\"><h3>✅ PASSED (${d.passed.length})</h3>`;
+    for(const p of d.passed) {
+      html += `<div class=\"finding low\"><span style=\"color:#86efac\">${p}</span></div>`;
+    }
+    html += '</div>';
+  }
+  document.getElementById('results').innerHTML = html;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.env
+node_modules/
+__pycache__/
+*.pyc
+data/
+uploads/
+dist/
+.next/
+*.db
+backend/data/*.db
+_archive/

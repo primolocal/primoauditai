@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PrimoAuditAI — Auditor Toolbox</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;height:100vh;display:flex;flex-direction:column;overflow:hidden;font-size:14px;line-height:1.5}
+.topbar{background:#161b22;border-bottom:1px solid #21262d;padding:5px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0;min-height:38px}
+.topbar .brand{font-size:15px;font-weight:700;color:#f0883e;letter-spacing:-0.3px}
+.topbar .sep{width:1px;height:16px;background:#21262d}
+.topbar .claim{font-size:11px;color:#c9d1d9;font-weight:600}
+.topbar .meta{font-size:11px;color:#8b949e}
+.topbar .badge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600}
+.badge.good{background:#0d3325;color:#7ee787}
+.badge.warn{background:#3d1717;color:#f87171}
+.topbar .spacer{flex:1}
+.topbar button{background:#21262d;border:1px solid #30363d;color:#c9d1d9;font-size:11px;padding:4px 8px;border-radius:4px;cursor:pointer}
+.topbar button:hover{background:#30363d}
+.topbar button.primary{background:#d29922;color:#0d1117;font-weight:600;border-color:#d29922}
+.topbar button.success{background:#238636;color:#fff;border-color:#238636}
+.main{display:flex;flex:1;overflow:hidden}
+.tabs{display:flex;background:#161b22;border-bottom:1px solid #21262d;flex-shrink:0;padding:0}
+.tab{padding:6px 12px;font-size:11px;color:#8b949e;cursor:pointer;border-bottom:2px solid transparent}
+.tab:hover{color:#c9d1d9}.tab.active{color:#f0883e;border-bottom-color:#f0883e}
+/* DECIDE LAYOUT */
+.decide-layout{display:flex;flex:1;overflow:hidden}
+.queue-pane{width:380px;background:#161b22;border-right:1px solid #21262d;display:flex;flex-direction:column;flex-shrink:0}
+.queue-header{padding:8px 10px;border-bottom:1px solid #21262d}
+.queue-header h3{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between}
+.queue-filters{display:flex;gap:1px;flex-wrap:wrap}
+.queue-filters span{padding:2px 8px;font-size:11px;border-radius:3px;cursor:pointer;background:#21262d;color:#8b949e}
+.queue-filters span.active{background:#d29922;color:#0d1117;font-weight:600}
+.queue-filters span .count{opacity:.7;margin-left:2px}
+.queue-list{flex:1;overflow-y:auto;padding:4px}
+.q-item{padding:6px 8px;border-bottom:1px solid #21262d;cursor:pointer;transition:all .1s}
+.q-item:hover{background:#1c2128}
+.q-item.active{background:#1c2128;border-left:2px solid #f0883e}
+.q-item.decided{opacity:.5}
+.q-header{display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.q-icon{font-size:11px;width:16px;text-align:center;flex-shrink:0}
+.q-icon.undecided{color:#f0883e}.q-icon.confirmed{color:#7ee787}.q-icon.questionable{color:#d29922}.q-icon.override{color:#a5b4fc}
+.q-ln{color:#f0883e;font-weight:600;font-size:11px;min-width:50px}
+.q-badge{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600;text-transform:uppercase}
+.q-badge.high{background:#3d1717;color:#f87171}.q-badge.medium{background:#3d2e00;color:#d29922}.q-badge.low{background:#1c2128;color:#8b949e}.q-badge.critical{background:#3d1717;color:#f87171}
+.q-cost{color:#7ee787;font-size:11px;margin-left:auto;font-family:monospace}
+.q-desc{font-size:11px;color:#8b949e;margin-left:22px;line-height:1.3}
+.detail-pane{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0d1117}
+.zones{flex:1;overflow-y:auto;padding:10px}
+.zone{border:1px solid #21262d;border-radius:6px;margin-bottom:8px;overflow:hidden}
+.zone-header{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#161b22;border-bottom:1px solid #21262d;cursor:pointer;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px}
+.zone-header:hover{color:#c9d1d9}
+.zone-body{padding:10px;display:none}
+.zone.open .zone-body{display:block}
+.zone .toggle{font-size:11px;color:#8b949e;transition:transform .2s}
+.zone.open .toggle{transform:rotate(45deg)}
+.evidence-grid{display:flex;gap:10px}
+.photo-strip{display:flex;gap:4px;flex-shrink:0}
+.photo-strip img{width:100px;height:70px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #21262d}
+.photo-strip img:hover{border-color:#f0883e}
+.line-data{flex:1;font-size:11px;line-height:1.6}
+.line-data .lname{font-size:11px;font-weight:600;color:#c9d1d9;margin-bottom:4px}
+.line-data .row{display:flex;gap:12px;margin-bottom:1px;color:#8b949e}
+.line-data .row .val{color:#c9d1d9;font-weight:600;font-family:monospace}
+.line-data .total{color:#7ee787;font-weight:700;margin-top:2px;border-top:1px solid #21262d;padding-top:2px}
+.rule-name{font-size:11px;font-weight:600;color:#f87171;margin-bottom:4px}
+.rule-detail{font-size:11px;color:#8b949e;line-height:1.5}
+.rule-meta{display:flex;gap:10px;margin-top:6px;font-size:11px;color:#8b949e}
+.rule-meta .conf{font-family:monospace}
+.decision-bar{background:#161b22;border-top:2px solid #30363d;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.decision-bar button{padding:10px 24px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;display:flex;align-items:center;gap:5px}
+.btn-confirm{background:#1a3d2a;color:#7ee787;border:1px solid #238636}.btn-confirm:hover{background:#1f4a33}
+.btn-questionable{background:#3d2e00;color:#d29922;border:1px solid #906616}.btn-questionable:hover{background:#4d3a00}
+.btn-override{background:#1e1b4b;color:#a5b4fc;border:1px solid #4c4a8a}.btn-override:hover{background:#2a2666}
+.decision-bar input{flex:1;background:#0d1117;border:1px solid #21262d;color:#c9d1d9;font-size:11px;padding:6px 10px;border-radius:4px}
+.decision-bar .hint{font-size:11px;color:#484f58;white-space:nowrap}
+/* ESTIMATE TABLE */
+.est-toolbar{display:flex;gap:4px;padding:6px 10px;flex-wrap:wrap;flex-shrink:0}
+.est-toolbar button,.est-toolbar input{background:#21262d;border:1px solid #30363d;color:#8b949e;font-size:11px;padding:3px 7px;border-radius:3px;cursor:pointer}
+.est-toolbar input{color:#c9d1d9;min-width:100px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{text-align:left;padding:4px 6px;background:#161b22;color:#8b949e;position:sticky;top:0;font-size:9px;text-transform:uppercase}
+td{padding:3px 6px;border-bottom:1px solid #161b22}
+tr:hover{background:#1c2128}
+tr.flagged{border-left:2px solid #f87171;background:#3d171711}
+tr.replace-line{background:#1a233244}
+.ln{color:#f0883e;font-weight:600}
+/* PHOTOS */
+.photo-layout{display:flex;flex:1;overflow:hidden}
+.photo-lines{width:300px;overflow-y:auto;padding:8px;border-right:1px solid #21262d;flex-shrink:0;background:#161b22}
+.photo-area{flex:1;overflow-y:auto;padding:8px;position:relative}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:5px}
+.photo-card{background:#161b22;border:1px solid #21262d;border-radius:4px;overflow:hidden;cursor:pointer}.photo-card:hover,.photo-card.selected{border-color:#f0883e}
+.photo-card img{width:100%;height:90px;object-fit:cover}.photo-card .info{padding:3px 5px}
+.photo-card .fname{width:100%;background:#0d1117;border:1px solid #21262d;color:#c9d1d9;font-size:9px;padding:2px}
+.overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.97);z-index:100;align-items:center;justify-content:center;flex-direction:column}
+.overlay.show{display:flex}.overlay img{max-width:85%;max-height:80vh;border-radius:4px}
+.overlay .tools{position:absolute;bottom:12px;display:flex;gap:4px;background:#161b22;padding:5px;border-radius:6px;border:1px solid #30363d}
+.overlay button{background:#21262d;border:1px solid #30363d;color:#8b949e;padding:4px 9px;border-radius:3px;font-size:11px;cursor:pointer}
+.overlay button.active{background:#d29922;color:#0d1117}
+/* NOTES */
+.note-item{padding:6px 10px;margin-bottom:4px;background:#161b22;border-left:2px solid #f0883e;border-radius:0 4px 4px 0;font-size:11px}
+.note-item.critical{border-color:#f87171}
+.note-input{display:flex;gap:4px;margin-top:8px}
+.note-input input{flex:1;background:#0d1117;border:1px solid #21262d;color:#c9d1d9;font-size:11px;padding:4px 8px;border-radius:3px}
+.note-input select{background:#0d1117;border:1px solid #21262d;color:#c9d1d9;font-size:11px;padding:4px;border-radius:3px}
+.note-input button{background:#d29922;color:#0d1117;border:none;padding:4px 10px;border-radius:3px;font-weight:600;cursor:pointer;font-size:11px}
+.empty{color:#8b949e;text-align:center;padding:60px 40px;font-size:13px;line-height:1.6}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;max-width:420px;width:90%}
+.modal h3{font-size:11px;color:#f0883e;margin-bottom:8px}
+.modal p{font-size:11px;color:#8b949e;margin-bottom:10px}
+.modal textarea{width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;font-size:11px;padding:8px;border-radius:4px;min-height:60px;margin-bottom:8px;resize:vertical}
+.modal .reason-btns{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.modal .reason-btns button{font-size:11px;padding:3px 7px;background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:3px;cursor:pointer}
+.modal .reason-btns button:hover{background:#30363d}
+.modal .mbtn{padding:6px 14px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:none}
+.modal .mbtn.primary{background:#d29922;color:#0d1117}
+.modal .mbtn.secondary{background:#21262d;color:#8b949e}
+/* SUMMARY */
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px}
+.summary-grid .card{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:10px}
+.summary-grid .card h4{font-size:11px;color:#8b949e;text-transform:uppercase;margin-bottom:6px;border-bottom:1px solid #21262d;padding-bottom:4px}
+.health-row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+.health-row .hv{font-weight:600}.hv.green{color:#7ee787}.hv.red{color:#f87171}.hv.orange{color:#d29922}.hv.purple{color:#a5b4fc}
+.score-pane{width:200px;background:#161b22;border-left:1px solid #21262d;overflow-y:auto;padding:10px;flex-shrink:0}
+.score-pane h3{font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #21262d;padding-bottom:4px;margin-bottom:8px}
+.score-progress{height:3px;background:#21262d;border-radius:1px;margin:6px 0 10px}
+.score-progress div{height:100%;background:#f0883e;border-radius:1px;transition:width .3s}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#484f58}
+*{scrollbar-width:thin;scrollbar-color:#30363d transparent}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #f0883e;outline-offset:1px}
+.tab,.q-item,button,.queue-filters span,.zone-header{transition:all .15s ease}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="brand">PrimoAuditAI</span><span class="sep"></span>
+  <span class="claim" id="hClaim">No file loaded</span>
+  <span class="meta" id="hVehicle"></span><span class="sep"></span>
+  <span class="badge warn" id="hStatus">NO FILE</span>
+  <span style="font-size:11px;color:#8b949e">Undecided: <b id="nUndecided" style="color:#f0883e">0</b></span>
+  <span style="font-size:11px;color:#8b949e">Questionable: <b id="nQuestionable" style="color:#d29922">0</b></span>
+  <span class="spacer"></span>
+  <label for="fileInput" style="background:#21262d;border:1px solid #30363d;color:#c9d1d9;font-size:11px;padding:6px 12px;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">📄 LOAD ESTIMATE</label>
+  <input type="file" id="fileInput" accept=".pdf,.zip" style="position:absolute;width:1px;height:1px;opacity:0">
+  <label for="photoInput" style="background:#21262d;border:1px solid #30363d;color:#c9d1d9;font-size:11px;padding:6px 12px;border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px">📷 ADD PHOTOS</label>
+  <input type="file" id="photoInput" accept="image/*,.pdf" multiple style="position:absolute;width:1px;height:1px;opacity:0">
+  <button class="primary" onclick="saveState()">SAVE</button>
+  <button class="success" onclick="exportPackage()">EXPORT</button>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="decide">🎯 Decide</div>
+  <div class="tab" data-tab="estimate">📋 Estimate</div>
+  <div class="tab" data-tab="photos">📷 Photos</div>
+  <div class="tab" data-tab="notes">📝 Notes</div>
+  <div class="tab" data-tab="summary">📊 Summary</div>
+</div>
+
+<div class="main">
+<!-- DECIDE TAB -->
+<div class="decide-layout" id="panel-decide">
+  <div class="queue-pane">
+    <div class="queue-header">
+      <h3>ACTION QUEUE <span style="color:#f0883e;font-weight:400" id="qTotal">0 findings</span></h3>
+      <div class="queue-filters" id="qFilters">
+        <span class="active" data-filter="attention">⚠ ATTENTION</span>
+        <span data-filter="all">ALL</span>
+        <span data-filter="confirmed">CONFIRMED</span>
+        <span data-filter="questionable">QUESTIONABLE</span>
+        <span data-filter="override">OVERRIDE</span>
+      </div>
+    </div>
+    <div class="queue-list" id="queueList"></div>
+  </div>
+  <div class="detail-pane">
+    <div class="zones" id="zones">
+      <div class="empty">Select a finding from the queue<br>or load a file to begin</div>
+    </div>
+    <div class="decision-bar" id="decisionBar">
+      <span class="hint">Select a finding</span>
+    </div>
+    </div>
+  <div class="score-pane" id="scorePane">
+    <h3>FILE HEALTH</h3>
+    <div class="score-progress"><div id="scoreBar" style="width:0%"></div></div>
+    <div id="scoreStats"></div>
+    <h3 style="margin-top:10px">BLOCKERS</h3>
+    <div id="scoreBlockers"></div>
+  </div>
+</div>
+
+<!-- ESTIMATE TAB -->
+<div id="panel-estimate" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+  <div class="est-toolbar">
+    <input type="text" id="lineFilter" placeholder="Filter..." oninput="filterLines()">
+    <button onclick="jumpNextUndecided()">→ Next Undecided</button>
+    <button onclick="filterByOp('replace')">REPL</button>
+    <button onclick="filterByOp('remove & install')">RI</button>
+    <button onclick="filterByOp('pdr')">PDR</button>
+    <button onclick="filterLines()">All</button>
+  </div>
+  <div style="flex:1;overflow:auto;padding:0 4px">
+    <table><thead><tr><th>L</th><th>Op</th><th>Description</th><th>Part#</th><th>Price</th><th>Hrs</th><th>📷</th><th>State</th></tr></thead><tbody id="lineBody"></tbody></table>
+  </div>
+</div>
+
+<!-- PHOTOS TAB -->
+<div id="panel-photos" style="display:none;flex:1;overflow:hidden">
+  <div class="photo-layout">
+    <div class="photo-lines" id="photoLinePanel">
+      <div style="font-size:11px;color:#8b949e;text-transform:uppercase;margin-bottom:8px">ESTIMATE LINES <span style="color:#f0883e" id="photoRemaining">0 remaining</span></div>
+      <div id="photoLinesList"></div>
+    </div>
+    <div class="photo-area">
+      <div class="est-toolbar"><button onclick="selectAllPhotos()">Select All</button><button onclick="markForSend()">Mark Send</button><button onclick="deleteSelectedPhotos()" style="background:#3d1717;color:#f87171">🗑</button><span style="font-size:11px;color:#8b949e;margin-left:4px" id="photoStats">0 photos</span></div>
+      <div class="photo-grid" id="photoGrid"></div>
+      <div class="overlay" id="overlay" onclick="closeOverlay()"><img id="overlayImg" src="" onclick="event.stopPropagation()"><div class="tools"><button onclick="event.stopPropagation();navOverlay(-1)">◀</button><button onclick="event.stopPropagation();zoomOverlay(-.25)">−</button><button onclick="event.stopPropagation();zoomOverlay(.25)">+</button><button id="btnInv" onclick="event.stopPropagation();toggleInv()">INV</button><button id="btnBW" onclick="event.stopPropagation();toggleBW()">B&W</button><button onclick="event.stopPropagation();navOverlay(1)">▶</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- NOTES TAB -->
+<div id="panel-notes" style="display:none;flex:1;flex-direction:column;overflow:hidden;padding:10px">
+  <div style="flex:1;overflow-y:auto" id="notesList"></div>
+  <div class="note-input">
+    <select id="noteType"><option value="high">HIGH</option><option value="critical">CRITICAL</option></select>
+    <input id="noteText" placeholder="Add note..."><input id="noteLine" placeholder="L#" style="max-width:40px">
+    <button onclick="addNote()">Add</button>
+  </div>
+</div>
+
+<!-- SUMMARY TAB -->
+<div id="panel-summary" style="display:none;flex:1;overflow-y:auto;padding:10px">
+  <div class="summary-grid">
+    <div><div class="card"><h4>NADA / TL</h4><input type="number" id="nadaInput" placeholder="Enter NADA value" style="width:100%;background:#0d1117;border:1px solid #21262d;color:#c9d1d9;padding:6px;border-radius:3px;font-size:11px;margin-bottom:6px" onchange="updateSummary()"><div id="tlResult"></div></div>
+    <div class="card"><h4>File Health</h4><div id="healthSummary"></div></div></div>
+    <div><div class="card"><h4>Notes</h4><div id="summaryNotes"></div></div>
+    <div class="card"><h4>Overrides</h4><div id="overrideSummary"></div></div></div>
+  </div>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle"></h3><p id="modalDesc"></p>
+    <div class="reason-btns" id="modalReasons"></div>
+    <textarea id="modalText"></textarea>
+    <div style="display:flex;gap:6px;justify-content:flex-end">
+      <button class="mbtn secondary" onclick="closeModal()">Cancel</button>
+      <button class="mbtn primary" id="modalConfirm" onclick="confirmModal()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API='/api/audit/full',STORE='atb_state';
+let data,lines=[],photos=[],findings=[],notes=[],cover=new Set(),selPhotos=new Set(),sendPhotos=new Set(),ovIdx=0,vZoom=1;
+let findingStates={},currentFinding=-1,currentFilter='attention',modalCallback=null,evidenceOpen=true,ruleOpen=true;
+
+const COMMENTS={
+  replace_not_supported:'Please re-evaluate the {part} operation. Current photos do not clearly support non-repairability. Please provide supporting rationale or revise as appropriate.',
+  oem_not_supported:'Please confirm OEM part necessity for {part}. Vehicle is {year} with {mileage} miles. Please provide alternate part sourcing documentation or revise as appropriate.',
+  blend_not_supported:'Please confirm blend necessity on {panel}. Current documentation does not include color match support.',
+  sublet_invoice_missing:'Please provide supporting invoice for {operation} on line {line}. NatGen requires documentation for all sublet charges.',
+  scan_invoice_missing:'Please provide pre-/post-scan documentation for line {line}. NatGen requires invoice for all scan charges.',
+  safe_harbor:'It does not appear that {concern}. Please review and adjust.',
+  clarify_rationale:'Please clarify the rationale for {operation} on line {line}. {detail}',
+  flex_remove:'Flex additive detected on line {line} — NatGen says NO FLEX. Please remove the flex additive charge.',
+};
+
+document.getElementById('fileInput').addEventListener('change',function(e){
+  var f=e.target.files[0];
+  if(!f)return;
+  document.getElementById('hStatus').textContent='LOADING...';
+  document.getElementById('hStatus').className='badge warn';
+  loadFile(f);
+});
+document.getElementById('photoInput').addEventListener('change',async function(e){
+  for(let f of Array.from(e.target.files)){
+    if(f.type.startsWith('image/')){let r=new FileReader();r.onload=ev=>{photos.push({filename:f.name,data_url:ev.target.result,tags:new Set,send:false});renderPhotos();};r.readAsDataURL(f);}
+    else if(f.name.toLowerCase().endsWith('.pdf')){let form=new FormData();form.append('photos',f);try{let res=await fetch('/api/extract-photos',{method:'POST',body:form});let d=await res.json();if(d.photos)d.photos.forEach(p=>photos.push({...p,tags:new Set,send:false}));renderPhotos();}catch(e){}}
+  }
+});
+async function loadFile(f){
+  if(!f)return;
+  let form=new FormData();form.append('estimate_pdf',f);form.append('nada_value','0');
+  try{
+    let r=await fetch(API,{method:'POST',body:form});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    data=await r.json();
+    photos=(data.extracted_photos||[]).map(p=>({...p,tags:new Set,send:false}));
+    lines=[];for(let p of(data.claim_panels||[]))for(let r of(p.rows||[]))if(!r.is_header&&!['include','','included'].includes((r.operation_label||'').toLowerCase()))lines.push(r);
+    findings=[];for(let c of['remove','fix','verify','attach','review'])for(let f of(data.findings||{})[c]||[])findings.push({...f,category:c});
+    cover=new Set();for(let i in photos)for(let l of(photos[i].tags||[]))cover.add(l);
+    findingStates={};currentFinding=0;
+    updateHeader();renderQueue();selectFinding(0);renderEstimate();renderPhotos();renderNotes();updateScorecard();saveState();
+  }catch(e){alert('Load failed: '+e.message);document.getElementById('hStatus').textContent='ERROR';}
+}
+
+function updateScorecard(){
+  let cs=findings.filter((_,i)=>(findingStates[i]||{}).status==='confirmed').length;
+  let qs=findings.filter((_,i)=>(findingStates[i]||{}).status==='questionable').length;
+  let os=findings.filter((_,i)=>(findingStates[i]||{}).status==='override').length;
+  let us=findings.filter((_,i)=>!(findingStates[i]||{}).status).length;
+  let pct=findings.length?Math.round(((cs+os)/findings.length)*100):0;
+  document.getElementById('scoreBar').style.width=pct+'%';
+  document.getElementById('scoreStats').innerHTML=`<div class="health-row"><span>Total</span><span class="hv">${findings.length}</span></div><div class="health-row"><span>Confirmed</span><span class="hv green">${cs}</span></div><div class="health-row"><span>Questionable</span><span class="hv orange">${qs}</span></div><div class="health-row"><span>Overridden</span><span class="hv purple">${os}</span></div><div class="health-row"><span>Undecided</span><span class="hv red">${us}</span></div>`;
+  document.getElementById('scoreBlockers').innerHTML=findings.filter((_,i)=>!(findingStates[i]||{}).status).slice(0,5).map(f=>`<div style="font-size:11px;padding:3px 0;border-bottom:1px solid #21262d;cursor:pointer;color:#f87171" onclick="selectFinding(${findings.indexOf(f)})"><b style="color:#f0883e">${(f.lines||[]).map(l=>'L'+l).join(',')}</b> ${(f.summary||'').substring(0,22)}</div>`).join('')||'<div style="font-size:11px;color:#7ee787">All decided ✅</div>';
+}
+function updateHeader(){
+  document.getElementById('hClaim').textContent=data?.claim_number||'—';
+  document.getElementById('hVehicle').textContent=`${data?.vehicle?.year||''} ${data?.vehicle?.make||''} ${data?.vehicle?.model||''} | ${data?.shop?.state||''}`;
+  let u=findings.filter((_,i)=>!(findingStates[i]||{}).status).length;
+  document.getElementById('hStatus').textContent=u?'FINDINGS OPEN':'READY';
+  document.getElementById('hStatus').className='badge '+(u?'warn':'good');
+  document.getElementById('nUndecided').textContent=u;
+  document.getElementById('nQuestionable').textContent=findings.filter((_,i)=>(findingStates[i]||{}).status==='questionable').length;
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',function(){switchTab(this.dataset.tab)}));
+function switchTab(n){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector(`[data-tab="${n}"]`).classList.add('active');
+  ['decide','estimate','photos','notes','summary'].forEach(id=>{
+    let el=document.getElementById('panel-'+id);
+    if(el)el.style.display=id===n?'flex':'none';
+  });
+  // Re-render when switching to Photos tab
+  if(n==='photos'){renderPhotoChecklist();}
+  if(n==='estimate'){renderEstimate();}
+  if(n==='summary'){updateSummary();}
+}
+
+// ===== QUEUE =====
+function renderQueue(){
+  let filtered=findings.map((f,i)=>({...f,idx:i})).filter(f=>{
+    let s=(findingStates[f.idx]||{}).status||'undecided';
+    if(currentFilter==='attention')return s==='undecided'||!s;
+    if(currentFilter==='all')return true;
+    return s===currentFilter;
+  });
+  if(currentFilter==='attention')filtered.sort((a,b)=>{let sev={critical:0,high:1,medium:2,low:3};return(sev[a.severity]||9)-(sev[b.severity]||9);});
+  document.getElementById('queueList').innerHTML=filtered.length?filtered.map(f=>{
+    let s=(findingStates[f.idx]||{}).status||'undecided';
+    let icon={undecided:'●',confirmed:'✓',questionable:'?',override:'⊘'}[s];
+    let cost=0;for(let ln of(f.lines||[])){let l=lines.find(ll=>ll.line_no===ln);if(l){let fs=l.financial_signature||{};cost+=(fs.part_price||0)+(fs.labor_amount_total||0);}}
+    return`<div class="q-item${currentFinding===f.idx?' active':''} ${s!=='undecided'?'decided':''}" onclick="selectFinding(${f.idx})">
+      <div class="q-header"><span class="q-icon ${s}">${icon}</span><span class="q-ln">${(f.lines||[]).map(l=>'L'+l).join(',')}</span><span class="q-badge ${f.severity||'low'}">${f.severity||'low'}</span>${cost?`<span class="q-cost">$${cost.toFixed(0)}</span>`:''}</div>
+      <div class="q-desc">${f.summary||''}${f.rule_id?` — ${f.rule_id}`:''}</div>
+    </div>`}).join(''):'<div class="empty">All findings decided ✅</div>';
+  document.getElementById('qTotal').textContent=`${findings.length} findings`;
+}
+document.getElementById('qFilters').addEventListener('click',e=>{if(e.target.dataset.filter){currentFilter=e.target.dataset.filter;document.querySelectorAll('#qFilters span').forEach(s=>s.classList.remove('active'));e.target.classList.add('active');renderQueue();}});
+
+// ===== DECISION PANEL =====
+function selectFinding(idx){
+  currentFinding=idx;renderQueue();
+  let f=findings[idx];if(!f){document.getElementById('zones').innerHTML='<div class="empty">No findings to review</div>';document.getElementById('decisionBar').innerHTML='<span class="hint">No findings</span>';return;}
+  let s=findingStates[idx]||{status:'undecided',note:'',reason:''};
+  let l=lines.find(l=>l.line_no===(f.lines||[])[0]),fs=l?.financial_signature||{},v=data?.vehicle||{};
+  
+  let draft='';let rid=f.rule_id||'';
+  if(rid==='NATGEN_014')draft=COMMENTS.flex_remove.replace('{line}',(f.lines||[]).join(','));
+  else if(rid==='NATGEN_006')draft=COMMENTS.replace_not_supported.replace('{part}',(l?.description||'').substring(0,30));
+  else if(rid==='NATGEN_004')draft=COMMENTS.oem_not_supported.replace('{part}',(l?.description||'').substring(0,30)).replace('{year}',v.year||'?').replace('{mileage}',v.mileage||'?');
+  else if(rid==='NATGEN_001')draft=COMMENTS.scan_invoice_missing.replace('{line}',(f.lines||[]).join(','));
+  else draft=COMMENTS.safe_harbor.replace('{concern}',(f.summary||'').substring(0,60));
+  
+  // Find linked photos
+  let linkedPhotos=photos.filter((_,i)=>{let t=photos[i]?.tags||new Set();return(f.lines||[]).some(ln=>t.has(ln));});
+  
+  let total=(fs.part_price||0)+(fs.labor_amount_total||0);
+  document.getElementById('zones').innerHTML=`
+    <div class="zone open" id="zoneEvidence"><div class="zone-header" onclick="toggleZone('evidence')"><span>EVIDENCE</span><span class="toggle">+</span></div>
+      <div class="zone-body">
+        <div class="evidence-grid">
+          <div class="photo-strip">${linkedPhotos.length?linkedPhotos.slice(0,4).map(p=>`<img src="${p.data_url}" onclick="event.stopPropagation();switchTab('photos');setTimeout(()=>openOverlay(photos.indexOf(p)),100)">`).join(''):'<div style="width:100px;height:70px;background:#21262d;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#484f58">No photos</div>'}</div>
+          <div class="line-data">
+            <div class="lname">L${l?.line_no||'?'}: ${(l?.description||'').substring(0,45)}</div>
+            <div class="row"><span>Labor:</span><span class="val">${fs.labor_hours_total||'—'} hrs × $71/hr</span></div>
+            <div class="row"><span>Part:</span><span class="val">${l?.part_number||'—'} ${fs.part_price?'$'+fs.part_price.toFixed(2):''}</span></div>
+            ${total?`<div class="total">Total: $${total.toFixed(2)}</div>`:''}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="zone open" id="zoneRule"><div class="zone-header" onclick="toggleZone('rule')"><span>RULE</span><span class="toggle">+</span></div>
+      <div class="zone-body">
+        <div class="rule-name">${f.rule_id||'RULE'} — ${f.title||'Finding'}</div>
+        <div class="rule-detail">${f.why_flagged||f.summary}</div>
+        <div class="rule-meta"><span>Severity: <b style="color:${f.severity==='critical'||f.severity==='high'?'#f87171':'#d29922'}">${(f.severity||'low').toUpperCase()}</b></span><span class="conf">Confidence: ${Math.round((f.confidence||0.7)*100)}%</span></div>
+        ${s.status!=='undecided'?`<div style="margin-top:6px;padding:6px;background:#0d1117;border-radius:4px;font-size:11px;color:#8b949e">Current: <b style="color:${s.status==='confirmed'?'#7ee787':s.status==='questionable'?'#d29922':'#a5b4fc'}">${s.status.toUpperCase()}</b> — ${s.note||s.reason||''}</div>`:''}
+      </div>
+    </div>
+    <div class="zone open" id="zoneNote"><div class="zone-header" onclick="toggleZone('note')"><span>DRAFT NOTE</span><span class="toggle">+</span></div>
+      <div class="zone-body"><div style="font-size:11px;color:#8b949e;line-height:1.5;background:#0d1117;padding:8px;border-radius:4px;font-style:italic">${draft}</div></div></div>`;
+  
+  document.getElementById('decisionBar').innerHTML=s.status==='undecided'?`
+    <button class="btn-confirm" onclick="decideFinding('confirmed')">✓ CONFIRM<span style="font-size:11px;opacity:.6;font-weight:400">Enter</span></button>
+    <button class="btn-questionable" onclick="decideFinding('questionable')">❓ QUESTION?<span style="font-size:11px;opacity:.6;font-weight:400">Space</span></button>
+    <button class="btn-override" onclick="decideFinding('override')">⊘ OVERRIDE<span style="font-size:11px;opacity:.6;font-weight:400">Ctrl+O</span></button>
+    <input type="text" placeholder="Optional note... (saved with decision)" id="decisionNote">
+  `:`
+    <span style="font-size:11px;color:${s.status==='confirmed'?'#7ee787':s.status==='questionable'?'#d29922':'#a5b4fc'}">${s.status==='confirmed'?'✓':'?'} ${s.status.toUpperCase()} — ${s.note||s.reason||'No note'}</span>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn-confirm" style="font-size:11px;padding:4px 10px" onclick="decideFinding('confirmed')">Change to CONFIRM</button>
+    <button class="btn-override" style="font-size:11px;padding:4px 10px" onclick="decideFinding('override')">Change to OVERRIDE</button>
+  `;
+}
+
+function toggleZone(zone){let el=document.getElementById('zone'+zone.charAt(0).toUpperCase()+zone.slice(1));el.classList.toggle('open');}
+
+function decideFinding(state){
+  let idx=currentFinding;if(idx<0)return;let f=findings[idx],note=document.getElementById('decisionNote')?.value?.trim()||'';
+  if(state==='confirmed'){
+    findingStates[idx]={status:'confirmed',note,reason:''};
+    let draft=generateNote(idx);if(draft&&!notes.find(n=>n.text===draft))notes.push({type:f.severity==='critical'?'critical':'high',line:(f.lines||[]).join(','),text:draft});renderNotes();
+  }else if(state==='questionable'){
+    let draft=COMMENTS.clarify_rationale.replace('{operation}',(f.summary||'').substring(0,40)).replace('{line}',(f.lines||[]).join(',')).replace('{detail}',f.why_flagged||'');
+    openModal('Question for Appraiser',draft,'Copy & Save',(text)=>{
+      findingStates[idx]={status:'questionable',note:text,reason:''};
+      navigator.clipboard.writeText(text).then(()=>{});
+    });return;
+  }else if(state==='override'){
+    let reasons=['PDR access — R&I required for panel access','Hail claim — blanket R&I exception applies','MOTOR included operation — R&I is included in parent Replace','Corrosion protection — CCC tags as Replace, treatment only',"Owner's choice — address/phone not required",'Custom...'];
+    openModal('Override Reason','Why are you overriding this rule?','Save Override',(text)=>{
+      findingStates[idx]={status:'override',note:'',reason:text||note||'(no reason)'};
+    },reasons);return;
+  }
+  selectFinding(idx);renderQueue();updateScorecard();updateHeader();saveState();
+}
+
+function generateNote(idx){let f=findings[idx],l=lines.find(l=>l.line_no===(f.lines||[])[0]),v=data?.vehicle||{},rid=f.rule_id||'';if(rid==='NATGEN_014')return COMMENTS.flex_remove.replace('{line}',(f.lines||[]).join(','));if(rid==='NATGEN_006')return COMMENTS.replace_not_supported.replace('{part}',(l?.description||'').substring(0,30));if(rid==='NATGEN_004')return COMMENTS.oem_not_supported.replace('{part}',(l?.description||'').substring(0,30)).replace('{year}',v.year||'?').replace('{mileage}',v.mileage||'?');if(rid==='NATGEN_001')return COMMENTS.scan_invoice_missing.replace('{line}',(f.lines||[]).join(','));return COMMENTS.safe_harbor.replace('{concern}',(f.summary||'').substring(0,60));}
+
+function openModal(title,desc,btnText,cb,reasons=[]){
+  document.getElementById('modalTitle').textContent=title;document.getElementById('modalDesc').textContent=desc;
+  document.getElementById('modalText').value=desc.startsWith('Why')?'':desc;
+  document.getElementById('modalConfirm').textContent=btnText;
+  document.getElementById('modalReasons').innerHTML=reasons.map(r=>`<button onclick="document.getElementById('modalText').value='${r.replace(/'/g,"\\'")}'">${r}</button>`).join('');
+  modalCallback=cb;document.getElementById('modalOverlay').classList.add('show');
+}
+function confirmModal(){let t=document.getElementById('modalText').value.trim();closeModal();if(modalCallback)modalCallback(t);}
+function closeModal(){document.getElementById('modalOverlay').classList.remove('show');modalCallback=null;}
+
+// ===== ESTIMATE =====
+function renderEstimate(){
+  let opMap={'replace':'REPL','remove & install':'RI','repair':'REPR','pdr':'PDR'};
+  document.getElementById('lineBody').innerHTML=lines.map(l=>{
+    let fs=l.financial_signature||{},fl=findings.some(f=>(f.lines||[]).includes(l.line_no));
+    let pc=0,op=(l.operation_label||'').toLowerCase();for(let s of Object.values(photos))if((s.tags||new Set).has(l.line_no))pc++;
+    let isRI=op==='remove & install',isRepl=op==='replace',isRepr=op==='repair';
+    if(isRI||isRepr){let hrs=fs.labor_hours_total||fs.part_price||0;let sf='';let dl=(l.description||'').toLowerCase();if(/frame|setup|measure|pull|straighten/i.test(dl))sf='f';else if(/mech|engine|trans|suspension|brake|steering|caliper|rotor|hub|knuckle/i.test(dl))sf='m';
+      return`<tr class="${fl?'flagged':''}${isRepl?' replace-line':''}"><td class="ln">${l.line_no}</td><td style="font-size:9px;font-weight:700;color:#8b949e">${isRI?'RI':'REPR'}</td><td>${(l.description||'').substring(0,40)}</td><td style="font-size:11px;color:#8b949e">${(l.part_number||'').substring(0,12)}</td><td></td><td style="font-family:monospace;font-size:11px">${hrs}${sf}</td><td style="font-size:11px">${pc?pc+'📷':'—'}</td><td style="font-size:11px">${getStateIcon(l.line_no)}</td></tr>`;}
+    let pr=fs.part_price||0,labor=fs.labor_hours_total||fs.paint_hours_total||0;if(!isRepl)pr=0;
+    return`<tr class="${fl?'flagged':''}${isRepl?' replace-line':''}"><td class="ln">${l.line_no}</td><td style="font-size:9px;font-weight:700;color:#f87171">${opMap[op]||''}</td><td>${(l.description||'').substring(0,40)}</td><td style="font-size:11px;color:#8b949e">${(l.part_number||'').substring(0,12)}</td><td style="font-family:monospace;font-size:11px">${pr?'$'+pr.toFixed(2):''}</td><td style="font-family:monospace;font-size:11px">${labor||''}</td><td style="font-size:11px">${pc?pc+'📷':'—'}</td><td style="font-size:11px">${getStateIcon(l.line_no)}</td></tr>`;
+  }).join('');
+}
+function getStateIcon(ln){let f=findings.find(f=>(f.lines||[]).includes(ln));if(!f)return'';let s=(findingStates[findings.indexOf(f)]||{}).status||'undecided';return{undecided:'●',confirmed:'✓',questionable:'?',override:'⊘'}[s]||'';}
+function filterLines(){let q=(document.getElementById('lineFilter')?.value||'').toLowerCase();document.querySelectorAll('#lineBody tr').forEach(tr=>tr.style.display=!q||tr.textContent.toLowerCase().includes(q)?'':'none');}
+function filterByOp(op){let m={replace:'REPL','remove & install':'RI',pdr:'PDR',repair:'REPR'};document.querySelectorAll('#lineBody tr').forEach(tr=>tr.style.display=tr.children[1]?.textContent===m[op]?'':'none');}
+function jumpNextUndecided(){let uf=findings.findIndex((_,i)=>!(findingStates[i]||{}).status);if(uf<0)return alert('All decided!');switchTab('decide');selectFinding(uf);}
+
+// ===== PHOTOS =====
+function renderPhotos(){
+  document.getElementById('photoGrid').innerHTML=photos.map((p,i)=>`<div class="photo-card${selPhotos.has(i)?' selected':''}" onclick="if(event.target.tagName!=='INPUT'){selPhotos.has(i)?selPhotos.delete(i):(selPhotos.clear(),selPhotos.add(i));renderPhotos();}"><img src="${p.data_url}" onclick="event.stopPropagation();openOverlay(${i})"><div class="info"><input class="fname" value="${p.filename}" onclick="event.stopPropagation()" onchange="photos[${i}].filename=this.value"></div></div>`).join('');
+  document.getElementById('photoStats').textContent=`${photos.length} photos`;
+  renderPhotoChecklist();
+}
+function selectAllPhotos(){if(selPhotos.size===photos.length)selPhotos.clear();else photos.forEach((_,i)=>selPhotos.add(i));renderPhotos();}
+function markForSend(){selPhotos.forEach(i=>sendPhotos.has(i)?sendPhotos.delete(i):sendPhotos.add(i));renderPhotos();}
+function deleteSelectedPhotos(){photos=photos.filter((_,i)=>!selPhotos.has(i));selPhotos.clear();renderPhotos();}
+function renderPhotoChecklist(){
+  if(!document.getElementById('photoLinesList')) return;
+  let uncovered=lines.filter(l=>!cover.has(l.line_no));
+  document.getElementById('photoRemaining').textContent=`${uncovered.length} remaining`;
+  
+  let html=lines.map(l=>{
+    let c=cover.has(l.line_no),op=(l.operation_label||'').toLowerCase();
+    let opShort=({replace:'REPL',pdr:'PDR','remove & install':'RI',repair:'REPR'}[op]||'');
+    let icon=c?'✅':'🔴';let color=c?'#7ee787':'#f87171';
+    let style=c?'opacity:.5;cursor:default':'cursor:pointer';
+    return`<div class="photo-check-item" data-ln="${l.line_no}" onclick="togglePhotoItem(${l.line_no})" style="display:flex;align-items:center;gap:6px;padding:3px 6px;font-size:9px;cursor:pointer;border-bottom:1px solid #21262d;${c?'background:#0d332522;':''}" title="${c?'Click to unverify':'Click to mark as verified'}">
+      <span style="min-width:14px;text-align:center;color:${c?'#7ee787':'#f87171'};font-size:9px">${c?'✅':'🔴'}</span>
+      <span style="color:#f0883e;min-width:22px;font-weight:600">L${l.line_no}</span>
+      <span style="min-width:28px;font-size:9px;font-weight:700;padding:1px 3px;border-radius:2px;background:${op==='replace'?'#3d171744':op==='pdr'?'#0d332544':'#161b22'};color:${op==='replace'?'#f87171':op==='pdr'?'#7ee787':'#8b949e'}">${opShort}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${(l.description||'').substring(0,24)}</span>
+    </div>`}).join('');
+  
+  // Special items at bottom
+  let vinDone=localStorage['photo_vin']==='true',odoDone=localStorage['photo_odo']==='true',suffDone=localStorage['photo_sufficient']==='true';
+  html+=`<div style="margin-top:8px;padding-top:8px;border-top:1px solid #30363d;font-size:11px;color:#8b949e;text-transform:uppercase;margin-bottom:4px">REQUIRED PHOTOS</div>`;
+  html+=`<div class="photo-check-item" data-ln="VIN" onclick="toggleSpecialItem('VIN')" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-bottom:1px solid #21262d;color:${vinDone?'#7ee787':'#f87171'};${vinDone?'opacity:.5':''}">
+    <span style="min-width:14px;text-align:center">${vinDone?'✅':'🔴'}</span><span style="color:#f0883e;min-width:22px;font-weight:600">VIN</span><span>VIN photo present and readable</span></div>`;
+  html+=`<div class="photo-check-item" data-ln="ODO" onclick="toggleSpecialItem('ODO')" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-bottom:1px solid #21262d;color:${odoDone?'#7ee787':'#f87171'};${odoDone?'opacity:.5':''}">
+    <span style="min-width:14px;text-align:center">${odoDone?'✅':'🔴'}</span><span style="color:#f0883e;min-width:22px;font-weight:600">ODO</span><span>Odometer photo present</span></div>`;
+  html+=`<div class="photo-check-item" data-ln="ALL" onclick="toggleSpecialItem('ALL')" style="display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;cursor:pointer;border-bottom:1px solid #21262d;color:${suffDone?'#7ee787':'#f87171'};${suffDone?'opacity:.5':''}">
+    <span style="min-width:14px;text-align:center">${suffDone?'✅':'🔴'}</span><span style="color:#f0883e;min-width:22px;font-weight:600">ALL</span><span>All photos sufficient for review</span></div>`;
+  
+  document.getElementById('photoLinesList').innerHTML=html;
+  // Event delegation for estimate lines and special items
+  document.getElementById('photoLinesList').onclick=function(e){
+    let el=e.target.closest('.photo-check-item');
+    if(!el)return;
+    let ln=el.dataset.ln;
+    if(ln==='VIN')toggleSpecialItem('VIN');
+    else if(ln==='ODO')toggleSpecialItem('ODO');
+    else if(ln==='ALL')toggleSpecialItem('ALL');
+    else togglePhotoItem(parseInt(ln));
+  };
+}
+function markLineVerified(ln){cover.add(ln);renderPhotoChecklist();renderEstimate();updateScorecard();saveState();}
+function togglePhotoItem(ln){
+  if(cover.has(ln))cover.delete(ln);else cover.add(ln);
+  renderPhotoChecklist();renderEstimate();updateScorecard();saveState();
+}
+function setPhotoSupport(ln,checked){
+  if(checked)cover.add(ln);else cover.delete(ln);
+  renderPhotoChecklist();renderEstimate();updateScorecard();saveState();
+}
+function toggleSpecialItem(key){
+  let k='photo_'+key.toLowerCase();
+  if(k==='photo_all')k='photo_sufficient';
+  localStorage[k]=localStorage[k]==='true'?'false':'true';
+  renderPhotoChecklist();
+}
+function recalcCover(){cover=new Set();for(let s of Object.values(photos))for(let l of(s.tags||[]))cover.add(l);}
+function openOverlay(i){ovIdx=i;vZoom=1;let img=document.getElementById('overlayImg');img.src=photos[i].data_url;img.style.transform='scale(1)';img.style.filter='';document.getElementById('btnInv').classList.remove('active');document.getElementById('btnBW').classList.remove('active');document.getElementById('overlay').classList.add('show');}
+function closeOverlay(){document.getElementById('overlay').classList.remove('show');}
+function navOverlay(d){ovIdx=Math.max(0,Math.min(photos.length-1,ovIdx+d));openOverlay(ovIdx);}
+function zoomOverlay(d){vZoom=Math.max(0.25,Math.min(4,vZoom+d));document.getElementById('overlayImg').style.transform=`scale(${vZoom})`;}
+function toggleInv(){let b=document.getElementById('btnInv');b.classList.toggle('active');applyF();}
+function toggleBW(){let b=document.getElementById('btnBW');b.classList.toggle('active');applyF();}
+function applyF(){let f=[];if(document.getElementById('btnInv').classList.contains('active'))f.push('invert(1)');if(document.getElementById('btnBW').classList.contains('active'))f.push('grayscale(1)');document.getElementById('overlayImg').style.filter=f.join(' ');}
+
+// ===== NOTES =====
+function addNote(){let t=document.getElementById('noteText').value.trim();if(!t)return;notes.push({type:document.getElementById('noteType').value,line:document.getElementById('noteLine').value,text:t});document.getElementById('noteText').value='';document.getElementById('noteLine').value='';renderNotes();saveState();}
+function renderNotes(){
+  document.getElementById('notesList').innerHTML=notes.length?notes.map((n,i)=>`<div class="note-item ${n.type==='critical'?'critical':''}"><span style="font-size:9px;padding:1px 4px;border-radius:2px;margin-right:4px;background:${n.type==='critical'?'#3d1717':'#161b22'};color:${n.type==='critical'?'#f87171':'#d29922'}">${n.type.toUpperCase()}</span>${n.line?'L'+n.line+': ':''}${n.text}<span style="float:right;font-size:9px;color:#8b949e;cursor:pointer" onclick="notes.splice(${i},1);renderNotes();saveState()">✕</span></div>`).join(''):'<div class="empty">Notes appear when findings are confirmed.<br>Or type your own below.</div>';
+}
+
+// ===== SUMMARY =====
+function updateSummary(){
+  let nada=parseFloat(document.getElementById('nadaInput').value)||0,total=0;lines.forEach(l=>{let fs=l.financial_signature||{};total+=(fs.part_price||0)+(fs.labor_amount_total||0);});
+  let pct=nada?((total/nada)*100).toFixed(1):0,st=data?.shop?.state||'?';
+  let th={KS:75,NE:75,MO:80,OK:60,TX:80,LA:75,AR:70,IA:80,IL:80,TN:75,MS:75,AL:75,GA:80,FL:80,SC:75,NC:75,VA:75,PA:80,NY:75,OH:75,MI:75,IN:80,WI:70,MN:80,CO:80,AZ:80,NV:65,CA:100,WA:80,OR:80,MT:80}[st]||75;
+  document.getElementById('tlResult').innerHTML=`<div style="font-size:11px">Estimate: <b>$${total.toLocaleString()}</b></div><div style="font-size:11px">NADA: <b>${nada?'$'+nada.toLocaleString():'—'}</b></div><div style="font-size:11px">Damage: <b style="color:${pct>=th?'#f87171':pct>=th*0.8?'#d29922':'#7ee787'}">${pct}%</b></div><div style="font-size:11px;margin-top:4px;font-weight:600;color:${pct>=th?'#f87171':pct>=th*0.8?'#d29922':'#7ee787'}">${pct>=th?'🔴 POTENTIAL TL':pct>=th*0.8?'🟡 Approaching':'🟢 Repairable'}</div>`;
+  let cs=findings.filter((_,i)=>(findingStates[i]||{}).status==='confirmed').length,qs=findings.filter((_,i)=>(findingStates[i]||{}).status==='questionable').length,os=findings.filter((_,i)=>(findingStates[i]||{}).status==='override').length,us=findings.length-cs-qs-os;
+  document.getElementById('healthSummary').innerHTML=`<div class="health-row"><span>Total</span><span class="hv">${findings.length}</span></div><div class="health-row"><span>Confirmed</span><span class="hv green">${cs} ✓</span></div><div class="health-row"><span>Questionable</span><span class="hv orange">${qs} ?</span></div><div class="health-row"><span>Overridden</span><span class="hv purple">${os} ⊘</span></div><div class="health-row"><span>Undecided</span><span class="hv red">${us} ●</span></div>`;
+  document.getElementById('summaryNotes').innerHTML=notes.length?notes.map(n=>`<div style="font-size:11px;margin-bottom:3px;color:#8b949e">[${n.type.toUpperCase()}]${n.line?' L'+n.line:''}: ${n.text}</div>`).join(''):'<div style="font-size:11px;color:#484f58">No notes</div>';
+  let ovs=findings.filter((_,i)=>(findingStates[i]||{}).status==='override');
+  document.getElementById('overrideSummary').innerHTML=ovs.length?ovs.map(f=>`<div style="font-size:11px;margin-bottom:3px;color:#a5b4fc">⊘ ${(f.lines||[]).map(l=>'L'+l).join(',')}: ${(findingStates[findings.indexOf(f)]||{}).reason||'No reason'}</div>`).join(''):'<div style="font-size:11px;color:#484f58">No overrides</div>';
+}
+
+// ===== STATE =====
+function saveState(){let s={claim:data?.claim_number||'',notes,findingStates};localStorage.setItem(STORE,JSON.stringify(s));}
+function loadState(){try{let s=JSON.parse(localStorage.getItem(STORE));if(!s||s.claim!==data?.claim_number)return;notes=s.notes||[];findingStates=s.findingStates||{};renderNotes();renderQueue();if(currentFinding>=0)selectFinding(currentFinding);}catch(e){}}
+
+// ===== EXPORT =====
+function exportPackage(){
+  let cs=findings.filter((_,i)=>(findingStates[i]||{}).status==='confirmed'),qs=findings.filter((_,i)=>(findingStates[i]||{}).status==='questionable'),os=findings.filter((_,i)=>(findingStates[i]||{}).status==='override');
+  let r=`RETURN PACKAGE — ${data?.claim_number||'?'}\n${'='.repeat(50)}\n\n`;
+  if(cs.length){r+=`CONFIRMED (${cs.length}):\n`;cs.forEach(f=>{let n=notes.find(n=>n.line&&n.line.split(',').includes(String((f.lines||[])[0])));r+=`  ${(f.lines||[]).map(l=>'L'+l).join(',')}: ${f.summary}${n?' — '+n.text:''}\n`;});}
+  if(qs.length){r+=`\nQUESTIONABLE (${qs.length}) — Inquiry to appraiser:\n`;qs.forEach(f=>{let s=findingStates[findings.indexOf(f)]||{};r+=`  ${(f.lines||[]).map(l=>'L'+l).join(',')}: ${s.note||f.summary}\n`;});}
+  if(os.length){r+=`\nOVERRIDES (${os.length}) — Audit trail:\n`;os.forEach(f=>{let s=findingStates[findings.indexOf(f)]||{};r+=`  ⊘ ${(f.lines||[]).map(l=>'L'+l).join(',')}: ${s.reason||'No reason'}\n`;});}
+  if(notes.length){r+=`\nTEMPLATES:\n`;notes.forEach(n=>r+=`[${n.type.toUpperCase()}]${n.line?' L'+n.line:''}: ${n.text}\n`);}
+  navigator.clipboard.writeText(r).then(()=>alert('Package copied!'));saveState();
+}
+
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;let k=e.key;if(k>='1'&&k<='5'){['decide','estimate','photos','notes','summary'][k-1]&&switchTab(['decide','estimate','photos','notes','summary'][k-1]);}if(currentFinding>=0&&document.getElementById('panel-decide').style.display!=='none'){if(k==='Enter'){e.preventDefault();decideFinding('confirmed');}if(k===' '){e.preventDefault();decideFinding('questionable');}if(k==='o'&&e.ctrlKey){e.preventDefault();decideFinding('override');}}if(k==='Escape')closeOverlay();if(k==='n')jumpNextUndecided();if((k==='ArrowLeft'||k==='ArrowRight')&&document.getElementById('overlay').classList.contains('show'))navOverlay(k==='ArrowLeft'?-1:1);});
+</script>
+</body>
+</html>

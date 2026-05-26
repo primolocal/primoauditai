@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Auditor Workbench — PrimoAuditAI</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
+.topbar{background:#1e293b;border-bottom:1px solid #334155;padding:8px 16px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.topbar h1{font-size:14px;color:#f59e0b}
+.topbar .meta{font-size:10px;color:#94a3b8;margin-left:auto}
+.topbar .stat{font-size:10px;padding:3px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px}
+.topbar .stat b{color:#f59e0b}
+.topbar .stat.red b{color:#fca5a5}
+.topbar select,.topbar input,.topbar button{background:#0f172a;border:1px solid #334155;color:#e2e8f0;font-size:10px;padding:4px 8px;border-radius:4px}
+.topbar button{background:#f59e0b;color:#0f172a;font-weight:600;cursor:pointer}
+.main{display:flex;flex:1;overflow:hidden}
+.left{width:260px;background:#1e293b;border-right:1px solid #334155;display:flex;flex-direction:column;flex-shrink:0}
+.left h3{font-size:10px;color:#94a3b8;padding:8px 12px;border-bottom:1px solid #334155;text-transform:uppercase;letter-spacing:1px}
+.line-list{flex:1;overflow-y:auto;padding:4px}
+.line-item{display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:10px;border-radius:3px;cursor:pointer;margin-bottom:2px}
+.line-item:hover{background:#1e293b}
+.line-item .ln{color:#f59e0b;font-weight:700;min-width:28px}
+.line-item .op{font-size:9px;text-transform:uppercase;padding:1px 4px;border-radius:2px;min-width:36px;text-align:center}
+.line-item .op.repl{background:#451a1a;color:#fca5a5}
+.line-item .op.rni{background:#1e293b;color:#94a3b8}
+.line-item .op.pdr{background:#14532d;color:#86efac}
+.line-item .op.repr{background:#451a1a;color:#fca5a5}
+.line-item.unsupported{border-left:2px solid #dc2626;background:#451a1a33}
+.line-item.supported{border-left:2px solid #16a34a}
+.line-item .desc{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.line-item .status{font-size:8px;min-width:14px;text-align:center}
+.center{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.photo-viewer{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
+.photo-viewer img{max-width:100%;max-height:100%;object-fit:contain;transition:transform .2s,filter .2s;cursor:grab}
+.photo-viewer img:active{cursor:grabbing}
+.photo-viewer .placeholder{color:#334155;font-size:14px}
+.photo-controls{display:flex;gap:4px;padding:8px;justify-content:center;background:#0f172a;border-top:1px solid #334155}
+.photo-controls button{background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:10px;padding:4px 10px;border-radius:3px;cursor:pointer}
+.photo-controls button.active{background:#f59e0b;color:#0f172a;border-color:#f59e0b}
+.photo-controls .nav-btn{font-size:14px;padding:4px 8px}
+.photo-strip{display:flex;gap:2px;padding:6px;overflow-x:auto;background:#0f172a;border-top:1px solid #1e293b;min-height:64px}
+.photo-strip img{width:50px;height:40px;object-fit:cover;border-radius:2px;cursor:pointer;border:2px solid transparent;opacity:.6}
+.photo-strip img:hover{opacity:1}
+.photo-strip img.active{border-color:#f59e0b;opacity:1}
+.tags-bar{display:flex;flex-wrap:wrap;gap:3px;padding:6px 8px;background:#0f172a;border-top:1px solid #334155;min-height:32px}
+.tags-bar .tag{font-size:10px;padding:2px 6px;background:#1e293b;border:1px solid #334155;border-radius:3px;cursor:pointer}
+.tags-bar .tag.active{background:#14532d;border-color:#16a34a;color:#86efac}
+.right{width:240px;background:#1e293b;border-left:1px solid #334155;overflow-y:auto;flex-shrink:0}
+.right h3{font-size:10px;color:#94a3b8;padding:8px 12px;border-bottom:1px solid #334155;text-transform:uppercase;letter-spacing:1px}
+.unsup-list{padding:4px}
+.unsup-item{font-size:10px;padding:4px 8px;border-left:2px solid #dc2626;cursor:pointer;margin-bottom:2px;border-radius:0 3px 3px 0}
+.unsup-item:hover{background:#451a1a33}
+.unsup-item.fixed{display:none}
+.stats-bar{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid #334155;flex-wrap:wrap}
+.stats-bar .badge{font-size:9px;padding:2px 6px;border-radius:3px}
+.badge.red{background:#451a1a;color:#fca5a5}
+.badge.green{background:#14532d;color:#86efac}
+.export-btn{display:block;width:calc(100% - 16px);margin:8px auto;padding:6px;background:#16a34a;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📋 Auditor Workbench</h1>
+  <span class="stat">Lines: <b id="totalLines">0</b></span>
+  <span class="stat red">Unsupported: <b id="unsupCount">0</b></span>
+  <span class="stat">Covered: <b id="covCount">0</b></span>
+  <span style="flex:1"></span>
+  <input type="file" id="estFile" accept=".pdf,.zip" style="max-width:180px" title="Upload estimate">
+  <input type="file" id="photoInput" accept="image/*,.pdf" multiple style="max-width:180px" title="Upload photos">
+  <button onclick="processFiles()">LOAD</button>
+  <span class="meta" id="claimMeta"></span>
+</div>
+
+<div class="main">
+  <div class="left">
+    <h3>📄 Estimate Lines</h3>
+    <div class="line-list" id="lineList"></div>
+  </div>
+
+  <div class="center">
+    <div class="photo-viewer" id="photoViewer">
+      <span class="placeholder">Upload an estimate and photos to begin</span>
+    </div>
+    <div class="photo-controls" id="photoControls" style="display:none">
+      <button class="nav-btn" onclick="navPhoto(-1)">◀</button>
+      <button onclick="zoomPhoto(-0.25)">−</button>
+      <button onclick="zoomPhoto(0.25)">+</button>
+      <span style="font-size:10px;color:#94a3b8;padding:4px 8px" id="photoLabel">1/1</span>
+      <button id="btnInv" onclick="toggleInv()">INVERT</button>
+      <button id="btnBW" onclick="toggleBW()">B&W</button>
+      <button onclick="resetPhoto()">RESET</button>
+      <button class="nav-btn" onclick="navPhoto(1)">▶</button>
+    </div>
+    <div class="tags-bar" id="tagsBar"></div>
+    <div class="photo-strip" id="photoStrip"></div>
+  </div>
+
+  <div class="right">
+    <h3>⚠ Unsupported Lines</h3>
+    <div class="unsup-list" id="unsupList"></div>
+    <button class="export-btn" onclick="exportNotes()">📋 COPY REPORT</button>
+  </div>
+</div>
+
+<script>
+const API = '/api/audit/full';
+let data = null, lines = [], photos = [], currentPhoto = 0, tagged = {}, covered = new Set();
+let pz = 1, px = 0, py = 0, dragging = false, dx = 0, dy = 0, inv = false, bw = false;
+
+async function processFiles() {
+  const ef = document.getElementById('estFile').files[0];
+  if(!ef) return;
+  document.querySelector('.photo-viewer .placeholder').textContent = 'Loading...';
+  
+  const form = new FormData(); form.append('estimate_pdf', ef); form.append('nada_value', '0');
+  for(const p of document.getElementById('photoInput').files) form.append('photos', p);
+  
+  const r = await fetch(API, {method:'POST', body: form});
+  data = await r.json();
+  photos = data.extracted_photos || [];
+  
+  // Build lines
+  lines = [];
+  for(const p of (data.claim_panels||[])) {
+    for(const r of (p.rows||[])) {
+      if(r.is_header) continue;
+      const op = (r.operation_label||'').toLowerCase();
+      if(['include','','included'].includes(op)) continue;
+      lines.push({no: r.line_no, op, desc: r.description||''});
+    }
+  }
+  
+  // Init tagged
+  photos.forEach((_,i) => { tagged[i] = tagged[i] || new Set(); });
+  
+  renderLines();
+  renderPhotoStrip();
+  showPhoto(0);
+  updateUnsupported();
+  updateStats();
+  document.getElementById('claimMeta').textContent = 
+    `${data.claim_number||'?'} | ${data.vehicle?.year||''} ${data.vehicle?.make||''} ${data.vehicle?.model||''} | ${data.shop?.state||''}`;
+}
+
+function renderLines() {
+  const el = document.getElementById('lineList');
+  el.innerHTML = lines.map(l => `
+    <div class="line-item" id="li-${l.no}" onclick="jumpToLine(${l.no})">
+      <span class="ln">L${l.no}</span>
+      <span class="op ${l.op==='replace'?'repl':l.op==='remove & install'?'rni':l.op==='pdr'?'pdr':'repr'}">${l.op.substring(0,4)}</span>
+      <span class="desc">${l.desc.substring(0,35)}</span>
+      <span class="status">${covered.has(l.no)?'✅':'⬤'}</span>
+    </div>
+  `).join('');
+}
+
+let currentPhotoEl = null;
+function showPhoto(idx) {
+  if(!photos.length) return;
+  currentPhoto = Math.max(0, Math.min(photos.length-1, idx));
+  pz = 1; px = 0; py = 0; inv = false; bw = false;
+  
+  if(!currentPhotoEl) {
+    currentPhotoEl = document.createElement('img');
+    document.getElementById('photoViewer').appendChild(currentPhotoEl);
+    setupDrag(currentPhotoEl);
+    document.getElementById('photoControls').style.display = 'flex';
+    document.querySelector('.photo-viewer .placeholder').remove();
+  }
+  
+  const p = photos[currentPhoto];
+  currentPhotoEl.src = p.data_url;
+  currentPhotoEl.style.transform = 'scale(1)';
+  currentPhotoEl.style.filter = '';
+  document.getElementById('photoLabel').textContent = `${currentPhoto+1}/${photos.length}`;
+  document.getElementById('btnInv').classList.remove('active');
+  document.getElementById('btnBW').classList.remove('active');
+  renderTags(currentPhoto);
+  renderPhotoStrip();
+}
+
+function renderPhotoStrip() {
+  const el = document.getElementById('photoStrip');
+  el.innerHTML = photos.map((p,i) => `
+    <img src="${p.data_url}" class="${i===currentPhoto?'active':''}" onclick="showPhoto(${i})">
+  `).join('');
+}
+
+function renderTags(pi) {
+  const el = document.getElementById('tagsBar');
+  const t = tagged[pi] || new Set();
+  el.innerHTML = lines.map(l => `
+    <div class="tag${t.has(l.no)?' active':''}" onclick="toggleTag(${pi},${l.no})">
+      L${l.no} ${l.desc.substring(0,20)}
+    </div>
+  `).join('');
+}
+
+function toggleTag(pi, ln) {
+  if(!tagged[pi]) tagged[pi] = new Set();
+  tagged[pi].has(ln) ? tagged[pi].delete(ln) : tagged[pi].add(ln);
+  renderTags(pi);
+  recalcCovered();
+  updateUnsupported();
+  updateStats();
+  renderLines();
+}
+
+function recalcCovered() {
+  covered = new Set();
+  for(const s of Object.values(tagged)) for(const l of s) covered.add(l);
+}
+
+function updateUnsupported() {
+  const unsup = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install');
+  document.getElementById('unsupList').innerHTML = unsup.length 
+    ? unsup.map(l => `
+      <div class="unsup-item" onclick="markCovered(${l.no})">L${l.no}: ${l.desc.substring(0,30)}</div>
+    `).join('')
+    : '<div style="font-size:10px;color:#86efac;padding:8px">All lines supported ✅</div>';
+}
+
+function markCovered(ln) {
+  covered.add(ln);
+  updateUnsupported();
+  updateStats();
+  renderLines();
+}
+
+function updateStats() {
+  document.getElementById('totalLines').textContent = lines.length;
+  const unsup = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install');
+  document.getElementById('unsupCount').textContent = unsup.length;
+  document.getElementById('covCount').textContent = covered.size;
+}
+
+function jumpToLine(ln) {
+  document.getElementById('li-'+ln)?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// Photo controls
+function navPhoto(d) { showPhoto(currentPhoto + d); }
+function zoomPhoto(d) { pz = Math.max(0.25, Math.min(4, pz + d)); updatePhotoTransform(); }
+function resetPhoto() { pz=1;px=0;py=0;inv=false;bw=false;document.getElementById('btnInv').classList.remove('active');document.getElementById('btnBW').classList.remove('active');currentPhotoEl.style.filter='';updatePhotoTransform(); }
+function toggleInv() { inv=!inv; document.getElementById('btnInv').classList.toggle('active',inv); applyPhotoFilter(); }
+function toggleBW() { bw=!bw; document.getElementById('btnBW').classList.toggle('active',bw); applyPhotoFilter(); }
+function applyPhotoFilter() {
+  const f = [];
+  if(inv) f.push('invert(1)');
+  if(bw) f.push('grayscale(1)');
+  currentPhotoEl.style.filter = f.join(' ');
+}
+function updatePhotoTransform() { currentPhotoEl.style.transform = `translate(${px}px,${py}px) scale(${pz})`; }
+function setupDrag(img) {
+  img.addEventListener('mousedown', e => { dragging=true; dx=e.clientX-px; dy=e.clientY-py; });
+  document.addEventListener('mousemove', e => { if(!dragging)return; px=e.clientX-dx; py=e.clientY-dy; updatePhotoTransform(); });
+  document.addEventListener('mouseup', () => dragging=false);
+  document.addEventListener('wheel', e => { if(e.target.closest('.photo-viewer')) { e.preventDefault(); zoomPhoto(e.deltaY<0?.1:-.1); } }, {passive:false});
+  document.addEventListener('keydown', e => {
+    if(e.key==='ArrowLeft') navPhoto(-1);
+    if(e.key==='ArrowRight') navPhoto(1);
+    if(e.key==='Escape') resetPhoto();
+  });
+}
+
+function exportNotes() {
+  const unsup = lines.filter(l => !covered.has(l.no) && l.op !== 'remove & install');
+  let r = `PHOTO SUPPORT REPORT — ${data?.claim_number||'?'}\n${'='.repeat(40)}\n`;
+  r += `Covered: ${covered.size}/${lines.length} | Unsupported: ${unsup.length}\n\n`;
+  if(unsup.length) {
+    r += `UNSUPPORTED:\n`;
+    unsup.forEach(l => r += `  L${l.no}: ${l.op} ${l.desc}\n`);
+    r += `\nIF THE PHOTOS DON'T SHOW IT, DO NOT WRITE IT.\n`;
+  } else { r += `All lines have photo support.\n`; }
+  navigator.clipboard.writeText(r).then(()=>alert('Report copied!'));
+}
+</script>
+</body>
+</html>
