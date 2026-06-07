@@ -1,7 +1,6 @@
 """
 RulesEngine — auto-discovery, singleton cache, per-rule error isolation.
 """
-from typing import Dict, List, Optional
 
 from src.engine.base import BaseRule, RuleResult
 from src.engine.context import AuditContext
@@ -20,21 +19,21 @@ class RulesEngine:
         results = engine.run_all(audit_context)
     """
 
-    def __init__(self, _rules: Optional[List[BaseRule]] = None) -> None:
+    def __init__(self, _rules: list[BaseRule] | None = None) -> None:
         if _rules is not None:
             self._rules = _rules
         else:
             from src.engine.discovery import discover_rules
             self._rules = discover_rules("src.domains")
 
-    def run_all(self, ctx: AuditContext) -> Dict[str, List[RuleResult]]:
+    def run_all(self, ctx: AuditContext) -> dict[str, list[RuleResult]]:
         """
         Run all applicable rules against the audit context.
 
         Returns a dict mapping rule class name to list of RuleResults.
         Only includes rules that both (a) apply and (b) produce findings.
         """
-        results: Dict[str, List[RuleResult]] = {}
+        results: dict[str, list[RuleResult]] = {}
 
         for rule in self._rules:
             try:
@@ -55,13 +54,13 @@ class RulesEngine:
         """Return the number of loaded rules."""
         return len(self._rules)
 
-    def list_rules(self) -> List[str]:
+    def list_rules(self) -> list[str]:
         """Return list of loaded rule IDs."""
         return [r.rule_id for r in self._rules]
 
 
 # --- Singleton ---
-_engine_instance: Optional[RulesEngine] = None
+_engine_instance: RulesEngine | None = None
 
 
 def get_engine() -> RulesEngine:

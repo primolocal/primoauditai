@@ -1,9 +1,7 @@
 """
 Tests for core audit rules (AUDIT_001, AUDIT_004-010).
 """
-import pytest
 
-from src.engine.context import AuditContext
 from src.domains.audit.rules import (
     FlexAddRule,
     HazWasteRule,
@@ -14,6 +12,7 @@ from src.domains.audit.rules import (
     NegativeLaborRule,
     ZeroPricePartRule,
 )
+from src.engine.context import AuditContext
 
 
 def make_line(**kwargs):

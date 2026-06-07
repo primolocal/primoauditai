@@ -3,7 +3,7 @@ AuditContext — the shared data object passed to every rule.
 Wraps parsed estimate data and provides shared helpers.
 """
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -21,19 +21,19 @@ class AuditContext:
         documents: List of attached document metadata
         extracted_photos: List of photo metadata objects
     """
-    lines: List[Dict[str, Any]] = field(default_factory=list)
-    panels: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    documents: List[Dict[str, Any]] = field(default_factory=list)
-    extracted_photos: List[Dict[str, Any]] = field(default_factory=list)
+    lines: list[dict[str, Any]] = field(default_factory=list)
+    panels: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    documents: list[dict[str, Any]] = field(default_factory=list)
+    extracted_photos: list[dict[str, Any]] = field(default_factory=list)
 
     # --- Shared helpers (ported from v1 audit_context.py) ---
 
-    def get_all_lines(self) -> List[Dict[str, Any]]:
+    def get_all_lines(self) -> list[dict[str, Any]]:
         """Return flat list of all line items."""
         return self.lines
 
-    def get_lines_by_panel(self, panel_name: str) -> List[Dict[str, Any]]:
+    def get_lines_by_panel(self, panel_name: str) -> list[dict[str, Any]]:
         """Return lines for a specific panel."""
         return self.panels.get(panel_name, [])
 
@@ -71,7 +71,7 @@ class AuditContext:
             for line in self.lines
         )
 
-    def shop_state(self) -> Optional[str]:
+    def shop_state(self) -> str | None:
         """Extract state abbreviation from shop address."""
         address = str(self.metadata.get("shop_address", "")).upper()
         # Common state abbreviations near end of address line
@@ -88,7 +88,7 @@ class AuditContext:
                 return state
         return None
 
-    def shop_zip(self) -> Optional[str]:
+    def shop_zip(self) -> str | None:
         """Extract ZIP code from shop address."""
         address = str(self.metadata.get("shop_address", ""))
         # Simple 5-digit ZIP extraction
@@ -96,18 +96,18 @@ class AuditContext:
         match = re.search(r"\b(\d{5})(?:-\d{4})?\b", address)
         return match.group(1) if match else None
 
-    def carrier(self) -> Optional[str]:
+    def carrier(self) -> str | None:
         """Return carrier name from metadata."""
         return self.metadata.get("insurance_company") or self.metadata.get("carrier")
 
-    def line_descriptions(self) -> List[str]:
+    def line_descriptions(self) -> list[str]:
         """Return all line descriptions (lowercased) for pattern matching."""
         return [
             str(line.get("description", "")).lower()
             for line in self.lines
         ]
 
-    def lines_matching(self, pattern: str) -> List[Dict[str, Any]]:
+    def lines_matching(self, pattern: str) -> list[dict[str, Any]]:
         """Return lines where description contains pattern (case-insensitive)."""
         pattern = pattern.lower()
         return [

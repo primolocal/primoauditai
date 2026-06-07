@@ -1,10 +1,14 @@
 """
 Rules engine base layer — the contract every rule implements.
 """
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from src.engine.context import AuditContext
 
 @dataclass(frozen=True)
 class RuleResult:
@@ -18,16 +22,16 @@ class RuleResult:
     category: str
     severity: str
     description: str
-    line_numbers: List[int] = field(default_factory=list)
+    line_numbers: list[int] = field(default_factory=list)
     confidence: float = field(default=1.0)
     applies: bool = True
-    override_reason: Optional[str] = None
+    override_reason: str | None = None
 
     # Rich display fields (optional — rules may provide for UI rendering)
-    title: Optional[str] = None
-    summary: Optional[str] = None
-    detail: Optional[str] = None
-    action: Optional[str] = None
+    title: str | None = None
+    summary: str | None = None
+    detail: str | None = None
+    action: str | None = None
     status: str = "unreviewed"
 
     def __post_init__(self) -> None:
@@ -36,7 +40,7 @@ class RuleResult:
             raise ValueError(f"confidence must be 0.0-1.0, got {self.confidence}")
 
     @property
-    def affected_lines(self) -> List[int]:
+    def affected_lines(self) -> list[int]:
         """Alias for line_numbers — backward compatible with v1 terminology."""
         return self.line_numbers
 
@@ -58,12 +62,12 @@ class BaseRule(ABC):
     description: str = ""
 
     @abstractmethod
-    def applies(self, ctx: "AuditContext") -> bool:
+    def applies(self, ctx: AuditContext) -> bool:
         """Return True if this rule should evaluate against the given context."""
         raise NotImplementedError
 
     @abstractmethod
-    def evaluate(self, ctx: "AuditContext") -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         """Evaluate the rule and return a list of findings (may be empty)."""
         raise NotImplementedError
 

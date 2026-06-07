@@ -1,9 +1,8 @@
 """
 Tests for the Communication Playbook.
 """
-import pytest
 
-from src.domains.tommy.playbook import format_comment, RETURN_COMMENTS, PROHIBITED_ALTERNATIVES
+from src.domains.tommy.playbook import PROHIBITED_ALTERNATIVES, RETURN_COMMENTS, format_comment
 
 
 class TestPlaybookTemplates:

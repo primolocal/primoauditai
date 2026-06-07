@@ -1,9 +1,7 @@
 """
 Tests for all Tommy's Audit Brain rules.
 """
-import pytest
 
-from src.engine.context import AuditContext
 from src.domains.tommy.rules import (
     AlignmentRequiredRule,
     CoverCarRequiredRule,
@@ -14,6 +12,7 @@ from src.domains.tommy.rules import (
     LumpSumDealerInvoiceRule,
     TotalLossThresholdFlagRule,
 )
+from src.engine.context import AuditContext
 
 
 class TestCoverCarRequiredRule:

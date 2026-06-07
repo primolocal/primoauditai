@@ -4,7 +4,6 @@ These detect fundamental estimate issues: included labor, misc charges,
 haz waste, flex additive, negative labor, labor without hours, zero-price parts,
 and mechanical labor on cosmetic estimates.
 """
-from typing import List
 
 from src.engine.base import BaseRule, RuleResult
 from src.engine.context import AuditContext
@@ -24,7 +23,7 @@ class IncludedLaborRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             fs = line.get("financial_signature", {})
@@ -65,7 +64,7 @@ class HighMiscRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             m_amt = line.get("financial_signature", {}).get("misc_amount", 0)
@@ -93,7 +92,7 @@ class HazWasteRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             desc = str(line.get("description", "")).lower()
@@ -121,7 +120,7 @@ class FlexAddRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             desc = str(line.get("description", "")).lower()
@@ -157,7 +156,7 @@ class NegativeLaborRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             fs = line.get("financial_signature", {})
@@ -215,7 +214,7 @@ class LaborNoHoursRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             fs = line.get("financial_signature", {})
@@ -262,7 +261,7 @@ class ZeroPricePartRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             has_pno = bool(line.get("part_number"))
@@ -299,7 +298,7 @@ class MechOnCosmeticRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         has_structural = any(
             line.get("labor_amount_frame", 0) > 0
             or line.get("labor_amount_diag", 0) > 0

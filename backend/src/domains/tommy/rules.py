@@ -3,7 +3,6 @@ Tommy's Audit Brain — rules extracted from the audit reference document.
 Cover car, total loss threshold, dealer invoice, frame setup, alignment,
 damage-to-value check, hail windshield causation, and escalation triggers.
 """
-from typing import List
 
 from src.engine.base import BaseRule, RuleResult
 from src.engine.context import AuditContext
@@ -21,7 +20,7 @@ class CoverCarRequiredRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         has_refinish = any(
             str(line.get("operation_label", "")).lower() == "refinish"
             for line in ctx.get_all_lines()
@@ -56,7 +55,7 @@ class TotalLossThresholdFlagRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         total = ctx.total_estimate()
         if total > 5000:
             sev = "critical" if total > 10000 else self.severity
@@ -85,7 +84,7 @@ class LumpSumDealerInvoiceRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             if line.get("is_header"):
@@ -121,7 +120,7 @@ class FrameSetupMeasureRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         has_frame = any(
             "frame" in str(line.get("description", "")).lower()
             or line.get("financial_signature", {}).get("labor_amount_frame", 0) > 0
@@ -158,7 +157,7 @@ class AlignmentRequiredRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return not ctx.is_hail_claim()
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         tire_keywords = ("tire", "wheel", "rim")
         has_tire = any(
             any(kw in str(line.get("description", "")).lower() for kw in tire_keywords)
@@ -194,7 +193,7 @@ class DamageToValueCheckRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         total = ctx.total_estimate()
         if total > 3000:
             return [RuleResult(
@@ -222,7 +221,7 @@ class HailWindshieldCausationRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return ctx.is_hail_claim()
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         results = []
         for line in ctx.get_all_lines():
             if line.get("is_header"):
@@ -258,7 +257,7 @@ class EscalationTriggerRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return True
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         total = ctx.total_estimate()
         if total > 10000:
             sev = "high" if total > 15000 else self.severity

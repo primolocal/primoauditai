@@ -6,13 +6,11 @@ import importlib
 import importlib.util
 import inspect
 import pkgutil
-from pathlib import Path
-from typing import List, Type
 
 from src.engine.base import BaseRule
 
 
-def discover_rules(package_name: str = "src.domains") -> List[BaseRule]:
+def discover_rules(package_name: str = "src.domains") -> list[BaseRule]:
     """
     Auto-discover all concrete BaseRule subclasses in a package.
 
@@ -23,7 +21,7 @@ def discover_rules(package_name: str = "src.domains") -> List[BaseRule]:
         rules = discover_rules("src.domains")
         # rules contains instances of all concrete rule classes
     """
-    discovered: List[BaseRule] = []
+    discovered: list[BaseRule] = []
 
     try:
         package = importlib.import_module(package_name)

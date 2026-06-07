@@ -2,8 +2,7 @@
 Tests for the rules engine base layer.
 RED-GREEN-REFACTOR: every new behavior starts with a failing test.
 """
-from typing import List
-from uuid import UUID
+
 import pytest
 
 from src.engine.base import BaseRule, RuleResult
@@ -95,7 +94,7 @@ class ConcreteRule(BaseRule):
     def applies(self, ctx: AuditContext) -> bool:
         return len(ctx.lines) > 0
 
-    def evaluate(self, ctx: AuditContext) -> List[RuleResult]:
+    def evaluate(self, ctx: AuditContext) -> list[RuleResult]:
         return [
             RuleResult(
                 rule_id=self.rule_id,

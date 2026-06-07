@@ -2,10 +2,9 @@
 Tommy's Communication Playbook — approved return comment templates.
 AE-111 through AE-160. Safe-harbor phrasing that stays on the estimating side.
 """
-from typing import Dict
 
 # Safe-harbor templates for every common audit finding
-RETURN_COMMENTS: Dict[str, str] = {
+RETURN_COMMENTS: dict[str, str] = {
     # Parts & Repair/Replace
     "replace_not_supported": (
         "Please re-evaluate the {part} operation. "

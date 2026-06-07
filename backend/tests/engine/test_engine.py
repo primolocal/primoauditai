@@ -1,9 +1,7 @@
 """
 Tests for rules engine discovery and singleton.
 """
-import importlib
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
