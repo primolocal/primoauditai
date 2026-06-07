@@ -23,10 +23,22 @@ class RuleResult:
     applies: bool = True
     override_reason: Optional[str] = None
 
+    # Rich display fields (optional — rules may provide for UI rendering)
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    detail: Optional[str] = None
+    action: Optional[str] = None
+    status: str = "unreviewed"
+
     def __post_init__(self) -> None:
         # Confidence must be 0.0-1.0
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be 0.0-1.0, got {self.confidence}")
+
+    @property
+    def affected_lines(self) -> List[int]:
+        """Alias for line_numbers — backward compatible with v1 terminology."""
+        return self.line_numbers
 
 
 class BaseRule(ABC):
