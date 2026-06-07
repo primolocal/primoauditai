@@ -1,5 +1,5 @@
 """
-QC endpoint — instant rules-engine-only audit. No DB persistence.
+QC endpoint — instant rules-engine-only audit with file parsing.
 """
 import time
 import uuid
@@ -10,9 +10,28 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from src.engine.context import AuditContext
 from src.engine.engine import get_engine
+from src.parser.ems_parser import EmsParser
+from src.parser.pdf_estimate_parser import PDFEstimateParser
 from src.schemas import FindingResponse, QCResponse
 
 router = APIRouter(prefix="/api/qc", tags=["qc"])
+
+
+def _parse_file(file: UploadFile) -> AuditContext:
+    """Parse uploaded file into AuditContext."""
+    content = file.file.read()
+    filename = file.filename or ""
+
+    if filename.lower().endswith(".zip"):
+        parser = EmsParser()
+        result = parser.parse(content)
+    elif filename.lower().endswith(".pdf"):
+        parser = PDFEstimateParser()
+        result = parser.parse(content)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload .pdf or .zip")
+
+    return result.to_audit_context()
 
 
 @router.post("", response_model=QCResponse)
@@ -20,15 +39,14 @@ async def run_qc(
     estimate_pdf: UploadFile = File(None),
     ems_zip: UploadFile = File(None),
 ) -> QCResponse:
-    """Run a quick audit — rules engine only, instant return, no DB write."""
+    """Run a quick audit — parse file, run rules engine, instant return, no DB write."""
     start = time.time()
 
-    if not estimate_pdf and not ems_zip:
+    file = estimate_pdf or ems_zip
+    if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
-    # TODO: Parse file into AuditContext
-    # For now, create empty context + run rules (test mode)
-    ctx = AuditContext(lines=[])
+    ctx = _parse_file(file)
 
     engine = get_engine()
     raw_results = engine.run_all(ctx)
@@ -76,6 +94,7 @@ async def run_qc(
             "severity_counts": severity_counts,
             "category_counts": category_counts,
             "duration_ms": round(duration * 1000, 2),
+            "lines_parsed": len(ctx.lines),
         },
         processed_at=datetime.now(UTC),
     )

@@ -69,7 +69,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     """Verify X-API-Key header against configured keys."""
 
     # Paths that don't require API key
-    exempt_paths = {"/health", "/openapi.json", "/docs", "/redoc", "/api/qc"}
+    exempt_paths = {"/health", "/openapi.json", "/docs", "/redoc", "/api/qc", "/api/extract-photos"}
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path

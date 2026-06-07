@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter, File, UploadFile
 
+from src.parser.pdf_estimate_parser import PDFPhotoExtractor
+
 router = APIRouter(prefix="/api/extract-photos", tags=["photos"])
 
 
@@ -14,14 +16,13 @@ async def extract_photos(
 ) -> dict[str, Any]:
     """Extract embedded JPEG images from a PDF and return as base64 data URLs."""
     try:
-        _ = await photos.read()
-        # TODO: Use PyMuPDF to extract images
-        # For now, return placeholder
+        content = await photos.read()
+        extractor = PDFPhotoExtractor()
+        extracted = extractor.extract(content)
         return {
-            "photos": [],
-            "count": 0,
+            "photos": extracted,
+            "count": len(extracted),
             "filename": photos.filename,
-            "message": "Photo extraction ready — PyMuPDF integration pending",
         }
     except Exception as e:
         return {
