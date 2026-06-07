@@ -49,6 +49,9 @@ class AuditResponse(BaseSchema):
     findings_count: int
     passed_count: int
     failed_count: int
+    parsed_lines: list[dict[str, Any]] | None = None
+    parsed_panels: dict[str, list[dict[str, Any]]] | None = None
+    parsed_metadata: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

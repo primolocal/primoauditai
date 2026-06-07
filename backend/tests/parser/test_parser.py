@@ -3,9 +3,14 @@ Tests for parser layer.
 """
 import struct
 
+import pytest
+
 from src.parser.base import ParsedEstimate, extract_state_from_address, extract_zip_from_address
 from src.parser.ems_parser import EmsParser
 from src.parser.pdf_estimate_parser import PDFEstimateParser
+
+TEST_PDF = "tests/testfiles/TestEstimate.pdf"
+
 
 # --- Base utilities ---
 
@@ -65,6 +70,191 @@ Levanders Body Shop
         meta = parser._parse_metadata(text)
         assert meta.get("claim_number") is None
         assert meta.get("vin") is None
+
+    def test_parse_real_pdf_metadata(self) -> None:
+        """Parse the test PDF and verify metadata."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+        meta = result.metadata
+        assert meta["claim_number"] == "260479295-1"
+        assert meta["vin"] == "5TFKB5DB1TX376956"
+        assert meta["odometer"] == 12950
+        assert meta["vehicle_state"] == "CO"
+        assert meta["vehicle_year"] == 2026
+        assert meta["vehicle_make"] == "TOYO"
+        assert meta["shop_name"] == "Maaco Collision Repair  Auto Paint"
+        assert meta["document_type"] == "pdf_estimate"
+
+
+# --- PDF line parsing (real file) ---
+
+class TestPDFLineParsing:
+    def test_parse_real_pdf_lines(self) -> None:
+        """Parse test PDF and verify line structure."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        assert len(result.lines) > 0
+        # Headers should be present
+        headers = [l for l in result.lines if l.get("is_header")]
+        assert len(headers) > 0
+        # Non-header lines should have line_no
+        items = [l for l in result.lines if not l.get("is_header")]
+        assert len(items) > 0
+        assert all(l["line_no"] != "" for l in items)
+
+    def test_labor_only_lines(self) -> None:
+        """Lines with operation but no part number have labor hours, not price."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 2: "2 * R&I RT Side cover ... 0.2" → labor=0.2, no part
+        line2 = [l for l in result.lines if l.get("line_no") == "2" and not l.get("is_header")][0]
+        assert line2["operation"] == "R&I"
+        assert line2["labor_hours"] == 0.2
+        assert line2["part_price"] == 0.0
+        assert line2["part_number"] == ""
+
+        # Line 10: "10 Aim headlamps 0.5" → labor=0.5
+        line10 = [l for l in result.lines if l.get("line_no") == "10" and not l.get("is_header")][0]
+        assert line10["description"] == "Aim headlamps"
+        assert line10["labor_hours"] == 0.5
+
+    def test_part_with_paint(self) -> None:
+        """Replace lines with part number have price + paint hours."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 5: "5 Repl Upper support 531130C060 1 117.08 0.2"
+        line5 = [l for l in result.lines if l.get("line_no") == "5" and not l.get("is_header")][0]
+        assert line5["operation"] == "Repl"
+        assert line5["part_number"] == "531130C060"
+        assert line5["part_price"] == 117.08
+        assert line5["labor_hours"] == 0.2
+        assert line5["paint_hours"] == 0.0  # This file's line 5 has no paint
+
+        # Line 19: "19 Repl Hood w/o molding (ALU) 533010C070 1 884.89 1.6 3.0"
+        line19 = [l for l in result.lines if l.get("line_no") == "19" and not l.get("is_header")][0]
+        assert line19["part_number"] == "533010C070"
+        assert line19["part_price"] == 884.89
+        assert line19["labor_hours"] == 1.6
+        assert line19["paint_hours"] == 3.0
+
+    def test_paint_only_lines(self) -> None:
+        """Lines like 'Add for Clear Coat' have paint hours, not price."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 4: "4 Add for Clear Coat 0.7"
+        line4 = [l for l in result.lines if l.get("line_no") == "4" and not l.get("is_header")][0]
+        assert line4["description"] == "Add for Clear Coat"
+        assert line4["paint_hours"] == 0.7
+        assert line4["part_price"] == 0.0
+        assert line4["labor_hours"] == 0.0
+
+    def test_flag_and_supplement(self) -> None:
+        """Flags (*, #) and supplement codes parsed correctly."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 2 has * flag
+        line2 = [l for l in result.lines if l.get("line_no") == "2" and not l.get("is_header")][0]
+        assert line2["flag"] == "*"
+
+        # Line 55 has # flag
+        line55 = [l for l in result.lines if l.get("line_no") == "55" and not l.get("is_header")][0]
+        assert line55["flag"] == "#"
+
+    def test_mechanical_labor_suffix(self) -> None:
+        """Labor type suffix 'M' marks mechanical labor."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 44: "44 Bleed brake system four wheel m 1.7 M"
+        line44 = [l for l in result.lines if l.get("line_no") == "44" and not l.get("is_header")][0]
+        assert "bleed" in line44["description"].lower()
+        assert line44["labor_hours"] == 1.7
+        assert line44["labor_type"] == "mechanical"
+
+    def test_frame_labor_suffix(self) -> None:
+        """Labor type suffix 'F' marks frame labor."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 57: "57 # Rpr Rough Pull 1.0 F"
+        line57 = [l for l in result.lines if l.get("line_no") == "57" and not l.get("is_header")][0]
+        assert line57["labor_hours"] == 1.0
+        assert line57["labor_type"] == "frame"
+
+    def test_all_digit_part_number(self) -> None:
+        """All-digit part numbers like 0446534050 parse correctly."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 45: "45 Repl Brake pads from 05/2025 0446534050 1 144.52 Incl."
+        line45 = [l for l in result.lines if l.get("line_no") == "45" and not l.get("is_header")][0]
+        assert line45["part_number"] == "0446534050"
+        assert line45["part_price"] == 144.52
+        assert line45["is_included_labor"] is True
+
+    def test_sublet_line(self) -> None:
+        """Sublet lines with price but no labor."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 56: "56 # Subl Four wheel alignment 1 99.95"
+        line56 = [l for l in result.lines if l.get("line_no") == "56" and not l.get("is_header")][0]
+        assert line56["operation"] == "Subl"
+        assert line56["part_price"] == 99.95
+        assert line56["labor_hours"] == 0.0
+
+    def test_cover_car_misc(self) -> None:
+        """Misc line with price + labor."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 55: "55 # Cover Car 1 5.00 0.2"
+        line55 = [l for l in result.lines if l.get("line_no") == "55" and not l.get("is_header")][0]
+        assert line55["description"] == "Cover Car"
+        assert line55["part_price"] == 5.0
+        assert line55["labor_hours"] == 0.2
+
+    def test_included_labor(self) -> None:
+        """Lines with trailing 'Incl.' have is_included_labor=True."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        # Line 16: "16 Repl Upper tie bar 532050C070 1 134.05 0.3 Incl."
+        line16 = [l for l in result.lines if l.get("line_no") == "16" and not l.get("is_header")][0]
+        assert line16["is_included_labor"] is True
+        assert line16["labor_hours"] == 0.3
+        assert line16["paint_hours"] == 0.0
+
+    def test_panel_grouping(self) -> None:
+        """Lines grouped under correct panel headers."""
+        parser = PDFEstimateParser()
+        with open(TEST_PDF, "rb") as f:
+            result = parser.parse(f.read())
+
+        assert "FRONT BUMPER" in result.panels
+        assert "HOOD" in result.panels
+        assert "FENDER" in result.panels
+        # FRONT BUMPER should have non-header lines
+        bumper_lines = result.panels["FRONT BUMPER"]
+        assert len(bumper_lines) > 0
+        assert all(l["panel_name"] == "FRONT BUMPER" for l in bumper_lines)
 
 
 # --- EMS DBF parser ---
@@ -158,26 +348,3 @@ class TestEmsParser:
         assert EmsParser._parse_float("") == 0.0
         assert EmsParser._parse_float(None) == 0.0
         assert EmsParser._parse_float("abc") == 0.0
-
-
-# --- PDF line parsing (smoke test with mock text) ---
-
-class TestPDFLineParsing:
-    def test_group_panels(self) -> None:
-        parser = PDFEstimateParser()
-        lines = [
-            {"line_no": 1, "is_header": True, "panel_name": "FENDER", "description": "FENDER"},
-            {"line_no": 2, "is_header": False, "panel_name": "FENDER", "description": "Replace fender"},
-            {"line_no": 3, "is_header": True, "panel_name": "DOOR", "description": "DOOR"},
-            {"line_no": 4, "is_header": False, "panel_name": "DOOR", "description": "Blend door"},
-        ]
-        panels = parser._group_panels(lines)
-        assert "FENDER" in panels
-        assert "DOOR" in panels
-        assert len(panels["FENDER"]) == 1
-        assert panels["FENDER"][0]["line_no"] == 2
-
-    def test_extract_tax_rate(self) -> None:
-        parser = PDFEstimateParser()
-        # Cannot test without real PDF; verify method exists
-        assert hasattr(parser, "_extract_tax_rate")

@@ -1,18 +1,24 @@
 """
 Audit routes — upload, run, get, list audits.
-"""
-import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+POST /api/audits — accepts multipart file upload, parses, persists to DB,
+runs rules engine, and returns full audit with findings.
+"""
+import hashlib
+import uuid
+from typing import Any
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db
 from src.engine.context import AuditContext
 from src.engine.engine import get_engine
-from src.models.models import AuditRun, Finding
+from src.models.models import AuditRun, Document, Finding, Photo
+from src.parser.ems_parser import EmsParser
+from src.parser.pdf_estimate_parser import PDFEstimateParser, PDFPhotoExtractor
 from src.schemas import (
-    AuditCreate,
     AuditListResponse,
     AuditResponse,
     FindingResponse,
@@ -21,35 +27,103 @@ from src.schemas import (
 router = APIRouter(prefix="/api/audits", tags=["audits"])
 
 
+def _parse_file(content: bytes, filename: str) -> tuple[Any, str]:
+    """Parse file bytes into ParsedEstimate and detect type."""
+    if filename.lower().endswith(".zip"):
+        parser = EmsParser()
+        result = parser.parse(content)
+        return result, "ems_zip"
+    elif filename.lower().endswith(".pdf"):
+        parser = PDFEstimateParser()
+        result = parser.parse(content)
+        return result, "pdf_estimate"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Upload .pdf or .zip"
+        )
+
+
 @router.post("", response_model=AuditResponse, status_code=201)
 async def create_audit(
-    audit_in: AuditCreate,
     estimate_pdf: UploadFile | None = File(None),
     ems_zip: UploadFile | None = File(None),
+    claim_number: str | None = Form(None),
+    vin: str | None = Form(None),
+    vehicle_year: int | None = Form(None),
+    vehicle_make: str | None = Form(None),
+    vehicle_model: str | None = Form(None),
+    odometer: int | None = Form(None),
+    insurance_company: str | None = Form(None),
+    shop_name: str | None = Form(None),
+    shop_address: str | None = Form(None),
+    loss_description: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
 ) -> AuditResponse:
     """Create a new audit — parse file, run rules engine, persist results."""
+    file = estimate_pdf or ems_zip
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded. Provide estimate_pdf or ems_zip.")
+
+    # Read file once, reuse bytes
+    content = await file.read()
+
+    # Parse file
+    parsed, doc_type = _parse_file(content, file.filename or "")
+    meta = parsed.metadata
+    ctx = parsed.to_audit_context()
+
+    # Build AuditRun — form metadata overrides parsed metadata
     run = AuditRun(
         id=uuid.uuid4(),
-        claim_number=audit_in.claim_number,
-        vin=audit_in.vin,
-        vehicle_year=audit_in.vehicle_year,
-        vehicle_make=audit_in.vehicle_make,
-        vehicle_model=audit_in.vehicle_model,
-        odometer=audit_in.odometer,
-        insurance_company=audit_in.insurance_company,
-        shop_name=audit_in.shop_name,
-        shop_address=audit_in.shop_address,
-        document_type=audit_in.document_type,
-        loss_description=audit_in.loss_description,
+        claim_number=claim_number or meta.get("claim_number"),
+        vin=vin or meta.get("vin"),
+        vehicle_year=vehicle_year or meta.get("vehicle_year"),
+        vehicle_make=vehicle_make or meta.get("vehicle_make"),
+        vehicle_model=vehicle_model or meta.get("vehicle_model"),
+        odometer=odometer or meta.get("odometer"),
+        insurance_company=insurance_company or meta.get("insurance_company"),
+        shop_name=shop_name or meta.get("shop_name"),
+        shop_address=shop_address or meta.get("shop_address"),
+        document_type=doc_type,
+        loss_description=loss_description or meta.get("loss_description"),
         status="processing",
+        total_estimate=ctx.total_estimate(),
+        total_labor=ctx.total_labor(),
+        total_parts=ctx.total_parts(),
+        parsed_lines=parsed.lines,
+        parsed_panels=parsed.panels,
+        parsed_metadata=meta,
     )
     db.add(run)
-    await db.commit()
-    await db.refresh(run)
+    await db.flush()  # Get run.id without committing yet
 
-    # TODO: Parse uploaded file into AuditContext
-    ctx = AuditContext(lines=[])
+    # Persist Document record
+    doc_hash = hashlib.sha256(content).hexdigest()
+    doc = Document(
+        id=uuid.uuid4(),
+        audit_run_id=run.id,
+        filename=file.filename or "unknown",
+        file_type=doc_type,
+        file_size=len(content),
+        content_hash=doc_hash,
+    )
+    db.add(doc)
+
+    # Extract and persist photos (PDF only)
+    if doc_type == "pdf_estimate" and content:
+        extractor = PDFPhotoExtractor()
+        extracted_photos = extractor.extract(content)
+        for photo in extracted_photos:
+            p = Photo(
+                id=uuid.uuid4(),
+                audit_run_id=run.id,
+                filename=photo["filename"],
+                data_url=photo.get("data_url"),
+                tags=[],
+                vision_result=None,
+            )
+            db.add(p)
 
     # Run rules engine
     engine = get_engine()
