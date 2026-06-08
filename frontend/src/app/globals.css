@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 14% 8%;
+    --foreground: 210 18% 83%;
+    --card: 220 13% 11%;
+    --card-foreground: 210 18% 83%;
+    --popover: 220 13% 11%;
+    --popover-foreground: 210 18% 83%;
+    --primary: 26 84% 59%;
+    --primary-foreground: 210 18% 97%;
+    --secondary: 220 13% 15%;
+    --secondary-foreground: 210 18% 83%;
+    --muted: 220 13% 15%;
+    --muted-foreground: 215 14% 48%;
+    --accent: 26 84% 59%;
+    --accent-foreground: 210 18% 97%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 18% 97%;
+    --border: 216 14% 17%;
+    --input: 216 14% 17%;
+    --ring: 26 84% 59%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-[#0d1117] text-[#c9d1d9] antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 3px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #30363d transparent;
+  }
+}
