@@ -7,6 +7,24 @@ import { ArrowLeft, AlertTriangle, CheckCircle, HelpCircle, Ban, X } from "lucid
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 const API_KEY = "pa_dev_key"
 
+interface ParsedLine {
+  line_no: string
+  is_header?: boolean
+  panel_name?: string
+  description?: string
+  operation?: string
+  operation_label?: string
+  part_number?: string
+  quantity?: number
+  part_price?: number
+  labor_hours?: number
+  paint_hours?: number
+  total?: number
+  labor_type?: string
+  flag?: string
+  supplement?: string
+}
+
 interface AuditRun {
   id: string
   claim_number: string | null
@@ -19,6 +37,9 @@ interface AuditRun {
   passed_count: number
   failed_count: number
   created_at: string
+  parsed_lines: ParsedLine[] | null
+  parsed_panels: Record<string, ParsedLine[]> | null
+  parsed_metadata: Record<string, any> | null
 }
 
 interface Finding {
@@ -83,6 +104,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [reasonInput, setReasonInput] = React.useState("")
   const [savingId, setSavingId] = React.useState<string | null>(null)
+  const [highlightLine, setHighlightLine] = React.useState<string | null>(null)
 
   const id = params.id
 
@@ -149,6 +171,13 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
   if (!audit) return <div className="p-6 text-sm text-[#8b949e]">Not found</div>
 
   const vehicle = [audit.vehicle_year, audit.vehicle_make, audit.vehicle_model].filter(Boolean).join(" ") || "Unknown vehicle"
+  const lines = audit.parsed_lines || []
+
+  // Build set of line numbers referenced by any finding
+  const referencedLines = new Set<string>()
+  findings.forEach((f) => {
+    (f.line_numbers || []).forEach((ln: number) => referencedLines.add(String(ln)))
+  })
 
   return (
     <div className="p-6">
@@ -178,90 +207,177 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
         ))}
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings</h2>
-      {findings.length === 0 ? (
-        <p className="text-sm text-[#8b949e]">No findings.</p>
-      ) : (
-        <div className="space-y-2">
-          {findings.map((f) => (
-            <div key={f.id} className={`rounded-lg border bg-[#161b22] p-3 hover:border-[#30363d] ${f.status === "override" ? "border-purple-500/30" : f.status === "confirmed" ? "border-green-500/30" : "border-[#21262d]"}`}>
-              <div className="mb-1 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
-                  <SeverityBadge severity={f.severity} />
-                  <StatusBadge status={f.status} />
-                </div>
-                <span className="text-xs text-[#484f58]">
-                  {f.line_numbers?.length ? `L${f.line_numbers.join(", ")}` : ""}
-                </span>
-              </div>
-              <p className="mb-2 text-sm text-[#c9d1d9]">{f.description}</p>
-
-              {/* Action row */}
-              <div className="flex items-center gap-2">
-                {f.status !== "confirmed" && (
-                  <button
-                    onClick={() => handleConfirm(f.id)}
-                    disabled={savingId === f.id}
-                    className="inline-flex items-center gap-1 rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20 disabled:opacity-50"
-                  >
-                    <CheckCircle className="h-3 w-3" />
-                    Confirm
-                  </button>
-                )}
-                {f.status !== "override" && (
-                  <button
-                    onClick={() => handleOverride(f.id)}
-                    disabled={savingId === f.id}
-                    className="inline-flex items-center gap-1 rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-50"
-                  >
-                    <Ban className="h-3 w-3" />
-                    Override
-                  </button>
-                )}
-                {editingId === f.id ? (
-                  <div className="flex items-center gap-1">
-                    <input
-                      autoFocus
-                      className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-[#c9d1d9] placeholder-[#484f58] outline-none focus:border-[#58a6ff]"
-                      placeholder="Reason..."
-                      value={reasonInput}
-                      onChange={(e) => setReasonInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleSaveReason(f.id) }}
-                    />
-                    <button
-                      onClick={() => handleSaveReason(f.id)}
-                      disabled={savingId === f.id || !reasonInput.trim()}
-                      className="rounded border border-[#30363d] px-2 py-1 text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => { setEditingId(null); setReasonInput("") }}
-                      className="rounded px-1 py-1 text-xs text-[#8b949e] hover:text-[#c9d1d9]"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* LEFT: Findings */}
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({findings.length})</h2>
+          {findings.length === 0 ? (
+            <p className="text-sm text-[#8b949e]">No findings.</p>
+          ) : (
+            <div className="space-y-2">
+              {findings.map((f) => (
+                <div
+                  key={f.id}
+                  className={`rounded-lg border bg-[#161b22] p-3 hover:border-[#30363d] cursor-pointer ${
+                    f.status === "override"
+                      ? "border-purple-500/30"
+                      : f.status === "confirmed"
+                      ? "border-green-500/30"
+                      : "border-[#21262d]"
+                  }`}
+                  onClick={() => {
+                    if (f.line_numbers?.length) {
+                      setHighlightLine(String(f.line_numbers[0]))
+                    }
+                  }}
+                >
+                  <div className="mb-1 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
+                      <SeverityBadge severity={f.severity} />
+                      <StatusBadge status={f.status} />
+                    </div>
+                    <span className="text-xs text-[#484f58]">
+                      {f.line_numbers?.length ? `L${f.line_numbers.join(", ")}` : ""}
+                    </span>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => { setEditingId(f.id); setReasonInput(f.override_reason || "") }}
-                    className="text-xs text-[#8b949e] hover:text-[#c9d1d9]"
-                  >
-                    {f.override_reason ? "Edit reason" : "Add reason"}
-                  </button>
-                )}
-              </div>
+                  <p className="mb-2 text-sm text-[#c9d1d9]">{f.description}</p>
 
-              {f.override_reason && (
-                <p className="mt-1 text-xs text-[#8b949e]">
-                  Reason: {f.override_reason}
-                </p>
+                  {/* Action row */}
+                  <div className="flex items-center gap-2">
+                    {f.status !== "confirmed" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleConfirm(f.id) }}
+                        disabled={savingId === f.id}
+                        className="inline-flex items-center gap-1 rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20 disabled:opacity-50"
+                      >
+                        <CheckCircle className="h-3 w-3" />
+                        Confirm
+                      </button>
+                    )}
+                    {f.status !== "override" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOverride(f.id) }}
+                        disabled={savingId === f.id}
+                        className="inline-flex items-center gap-1 rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-50"
+                      >
+                        <Ban className="h-3 w-3" />
+                        Override
+                      </button>
+                    )}
+                    {editingId === f.id ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          autoFocus
+                          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-[#c9d1d9] placeholder-[#484f58] outline-none focus:border-[#58a6ff]"
+                          placeholder="Reason..."
+                          value={reasonInput}
+                          onChange={(e) => setReasonInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveReason(f.id) }}
+                        />
+                        <button
+                          onClick={() => handleSaveReason(f.id)}
+                          disabled={savingId === f.id || !reasonInput.trim()}
+                          className="rounded border border-[#30363d] px-2 py-1 text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => { setEditingId(null); setReasonInput("") }}
+                          className="rounded px-1 py-1 text-xs text-[#8b949e] hover:text-[#c9d1d9]"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingId(f.id); setReasonInput(f.override_reason || "") }}
+                        className="text-xs text-[#8b949e] hover:text-[#c9d1d9]"
+                      >
+                        {f.override_reason ? "Edit reason" : "Add reason"}
+                      </button>
+                    )}
+                  </div>
+
+                  {f.override_reason && (
+                    <p className="mt-1 text-xs text-[#8b949e]">
+                      Reason: {f.override_reason}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Estimate Lines */}
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
+          <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
+            <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
+              {lines.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-[#8b949e]">No parsed lines.</p>
+              ) : (
+                lines.map((line, idx) => {
+                  const isHeader = line.is_header
+                  const isRef = referencedLines.has(line.line_no)
+                  const isHighlight = highlightLine === line.line_no
+                  const bg = isHeader
+                    ? "bg-[#21262d] font-semibold"
+                    : isHighlight
+                    ? "bg-[#f0883e]/10"
+                    : isRef
+                    ? "bg-[#58a6ff]/5"
+                    : "hover:bg-[#0d1117]"
+
+                  if (isHeader) {
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded px-3 py-1.5 text-sm text-[#c9d1d9] ${bg}`}
+                      >
+                        <span className="text-[#8b949e] mr-2">{line.line_no}</span>
+                        {line.panel_name || line.description || ""}
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-3 rounded px-3 py-1.5 text-xs transition-colors cursor-pointer ${bg} ${isHighlight ? "border-l-2 border-l-[#f0883e]" : ""}`}
+                      onClick={() => setHighlightLine(line.line_no === highlightLine ? null : line.line_no)}
+                    >
+                      <span className={`font-mono min-w-[2ch] text-right shrink-0 ${isRef ? "text-[#58a6ff] font-semibold" : "text-[#484f58]"}`}>
+                        {line.line_no}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 truncate">
+                          {line.flag && <span className="text-[#f0883e] font-bold">{line.flag}</span>}
+                          {line.operation && (
+                            <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>
+                          )}
+                          <span className="text-[#c9d1d9] truncate">{line.description}</span>
+                        </div>
+                        {(line.part_number || line.quantity || line.part_price || line.labor_hours || line.paint_hours || line.total) && (
+                          <div className="mt-0.5 flex gap-3 text-[#484f58]">
+                            {line.part_number && <span>PN: {line.part_number}</span>}
+                            {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
+                            {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
+                            {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
+                            {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
+                            {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
               )}
             </div>
-          ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
