@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { ClipboardCheck, Clock, Upload } from "lucide-react"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://primoauditai-production.up.railway.app"
 const API_KEY = "pa_dev_key"
 
 interface QCPacket {
