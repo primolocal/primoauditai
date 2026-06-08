@@ -161,8 +161,8 @@ def _check_estimate_completeness(
 ) -> list[QCFinding]:
     findings: list[QCFinding] = []
 
-    # Deductible
-    if meta.get("deductible") is None:
+    # Deductible (must be listed on estimate)
+    if not meta.get("deductible"):
         findings.append(
             QCFinding(
                 rule_id="COMPLETE_001",
@@ -196,8 +196,9 @@ def _check_estimate_completeness(
             )
         )
 
-    # Insurance
-    if not meta.get("insurance_company"):
+    # Insurance (use any of these keys: insurance_company, insurer, carrier)
+    insurance = meta.get("insurance_company") or meta.get("insurer") or meta.get("carrier")
+    if not insurance:
         findings.append(
             QCFinding(
                 rule_id="COMPLETE_004",
@@ -205,6 +206,30 @@ def _check_estimate_completeness(
                 severity="high",
                 description="Insurance company not listed on estimate",
                 suggested_fix="Verify insurance company name is present",
+            )
+        )
+
+    # License plate (may not be on all estimates — low severity)
+    if not meta.get("license_plate"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_005",
+                category="completeness",
+                severity="medium",
+                description="License plate not recorded on estimate",
+                suggested_fix="Verify license plate is present in vehicle section",
+            )
+        )
+
+    # Odometer has a separate key
+    if not meta.get("odometer"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_006",
+                category="completeness",
+                severity="low",
+                description="Odometer not recorded on estimate",
+                suggested_fix="Verify mileage is present in vehicle section",
             )
         )
 
@@ -243,8 +268,8 @@ def _check_state_compliance(
     parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
 ) -> list[QCFinding]:
     findings: list[QCFinding] = []
-    state = meta.get("state", "")
-    zip_code = meta.get("zip_code", "")
+    state = meta.get("state") or meta.get("vehicle_state") or meta.get("shop_state_derived") or ""
+    zip_code = meta.get("zip_code") or meta.get("shop_zip") or ""
 
     if not state:
         findings.append(
