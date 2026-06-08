@@ -14,6 +14,8 @@ interface QCPacket {
   status: string
   findings_count: number
   photo_total: number
+  carrier_confidence_score: number
+  carrier_ready: boolean
   created_at: string
 }
 
@@ -152,6 +154,9 @@ export default function QCPage() {
                 </div>
               </div>
               <div className="flex items-center gap-4">
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${p.carrier_ready ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                  {p.carrier_confidence_score}/100
+                </span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-[#8b949e]">
                     {p.findings_count} findings

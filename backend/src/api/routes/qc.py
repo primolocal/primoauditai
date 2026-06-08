@@ -219,6 +219,8 @@ async def list_qc(request: Request) -> dict[str, Any]:
             "status": p.status,
             "findings_count": p.findings_count,
             "photo_total": p.photo_total,
+            "carrier_confidence_score": p.carrier_confidence_score,
+            "carrier_ready": p.carrier_ready,
             "created_at": p.created_at.isoformat() if p.created_at else None,
         })
 
