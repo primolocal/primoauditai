@@ -92,6 +92,9 @@ def calculate_carrier_confidence(
     if not metadata.get("odometer"):
         complete_score -= 2
         complete_fails.append("Odometer missing from estimate")
+    if metadata.get("shop_name") and not metadata.get("shop_of_choice"):
+        complete_score -= 5
+        complete_fails.append("Shop of Choice not designated")
     
     complete_score = max(complete_score, 0)
     score_breakdown["estimate_completeness"] = complete_score
