@@ -127,8 +127,8 @@ def calculate_carrier_confidence(
             state_score -= 8
             state_fails.append("State not indicated on estimate")
         elif rid == "STATEQC_002":
-            state_score -= 8
-            state_fails.append("ZIP code missing from estimate")
+            # ZIP code suppressed — no penalty
+            pass
         elif rid == "STATEQC_003":
             state_score -= 9  # Total loss — critical
             state_fails.append("Estimate exceeds state total loss threshold")

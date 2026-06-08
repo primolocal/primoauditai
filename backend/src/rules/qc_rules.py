@@ -325,16 +325,7 @@ def _check_state_compliance(
             )
         )
 
-    if not zip_code:
-        findings.append(
-            QCFinding(
-                rule_id="STATEQC_002",
-                category="state_compliance",
-                severity="high",
-                description="ZIP code missing from estimate",
-                suggested_fix="Verify ZIP code is present in vehicle/insured or shop section",
-            )
-        )
+    # ZIP code check suppressed — not a rejection trigger
 
     # Total loss threshold check for TX (80%)
     if state and state.upper() == "TX":
