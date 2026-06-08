@@ -97,6 +97,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const [noteSaved, setNoteSaved] = React.useState(false)
   const [findings, setFindings] = React.useState<Finding[]>([])
   const [highlightLines, setHighlightLines] = React.useState<Set<number>>(new Set())
+  const packetRef = React.useRef<QCPacket | null>(null)
 
   const id = params.id
 
@@ -104,7 +105,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
     fetch(api("/api/qc/" + id), { headers: { "X-API-Key": API_KEY } })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: QCPacket) => {
-        setPacket(data)
+        setPacket(data); packetRef.current = data
         setFindings(data.findings || [])
         setAuditorNote(data.auditor_note || "")
         setLoading(false)
@@ -128,7 +129,20 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
       body: JSON.stringify({ status: newStatus }),
-    }).catch(() => {})
+    })
+    .then((r) => r.json())
+    .then((data) => {
+      if (packetRef.current) {
+        packetRef.current = {
+          ...packetRef.current,
+          carrier_confidence_score: data.carrier_confidence_score,
+          carrier_ready: data.carrier_ready,
+          rejection_reasons: data.rejection_reasons,
+        }
+        setPacket({...packetRef.current})
+      }
+    })
+    .catch(() => {})
   }
 
   async function saveNote() {

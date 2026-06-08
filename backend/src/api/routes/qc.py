@@ -311,7 +311,7 @@ class FindingUpdate(BaseModel):
 async def update_finding_status(
     packet_id: str, finding_id: str, body: FindingUpdate, request: Request
 ) -> dict[str, Any]:
-    """Update finding status: accepted, overridden, or rejected."""
+    """Update finding status and recalculate carrier score."""
     if body.status not in ("accepted", "overridden", "rejected"):
         raise HTTPException(status_code=400, detail="Status must be: accepted, overridden, rejected")
 
@@ -322,9 +322,52 @@ async def update_finding_status(
             raise HTTPException(status_code=404, detail="Finding not found")
 
         finding.status = body.status
+        await db.flush()
+
+        # Fetch all findings for this packet and recalculate score
+        all_res = await db.execute(select(QCFinding).filter(QCFinding.qc_packet_id == uuid.UUID(packet_id)))
+        all_findings = all_res.scalars().all()
+
+        pkt_res = await db.execute(select(QCPacket).filter(QCPacket.id == uuid.UUID(packet_id)))
+        packet = pkt_res.scalar_one_or_none()
+
+        if packet:
+            # Build findings list for scorer
+            findings_list = [
+                {
+                    "rule_id": f.rule_id,
+                    "category": f.category,
+                    "severity": f.severity,
+                    "description": f.description,
+                    "line_numbers": f.line_numbers,
+                }
+                for f in all_findings
+                if f.status != "accepted"  # accepted findings don't count toward score
+            ]
+            photo_counts = {
+                "photo_total": packet.photo_total,
+                "photo_vin": packet.photo_vin,
+                "photo_odometer": packet.photo_odometer,
+                "photo_damage": packet.photo_damage,
+            }
+            score_result = calculate_carrier_confidence(
+                findings_list,
+                photo_counts,
+                packet.parsed_metadata or {},
+            )
+            packet.carrier_confidence_score = score_result.total_score
+            packet.carrier_ready = score_result.ready_for_carrier
+            packet.rejection_reasons = score_result.rejection_reasons
+
         await db.commit()
 
-    return {"id": finding_id, "status": body.status}
+    return {
+        "id": finding_id,
+        "status": body.status,
+        "carrier_confidence_score": score_result.total_score if packet else 0,
+        "carrier_ready": score_result.ready_for_carrier if packet else False,
+        "rejection_reasons": score_result.rejection_reasons if packet else [],
+    }
 
 
 class NoteUpdate(BaseModel):
