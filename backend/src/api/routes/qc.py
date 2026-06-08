@@ -17,6 +17,7 @@ from typing import Any
 
 import fitz
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -276,3 +277,48 @@ async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
         ],
         "photos": photo_items,
     }
+
+
+class FindingUpdate(BaseModel):
+    status: str  # accepted, overridden, rejected
+
+
+@router.patch("/{packet_id}/findings/{finding_id}")
+async def update_finding_status(
+    packet_id: str, finding_id: str, body: FindingUpdate, request: Request
+) -> dict[str, Any]:
+    """Update finding status: accepted, overridden, or rejected."""
+    if body.status not in ("accepted", "overridden", "rejected"):
+        raise HTTPException(status_code=400, detail="Status must be: accepted, overridden, rejected")
+
+    async with async_session() as db:
+        result = await db.execute(select(QCFinding).filter(QCFinding.id == uuid.UUID(finding_id)))
+        finding = result.scalar_one_or_none()
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+
+        finding.status = body.status
+        await db.commit()
+
+    return {"id": finding_id, "status": body.status}
+
+
+class NoteUpdate(BaseModel):
+    auditor_note: str
+
+
+@router.patch("/{packet_id}/note")
+async def update_auditor_note(
+    packet_id: str, body: NoteUpdate, request: Request
+) -> dict[str, Any]:
+    """Update auditor note on a QC packet."""
+    async with async_session() as db:
+        result = await db.execute(select(QCPacket).filter(QCPacket.id == uuid.UUID(packet_id)))
+        packet = result.scalar_one_or_none()
+        if not packet:
+            raise HTTPException(status_code=404, detail="QC packet not found")
+
+        packet.auditor_note = body.auditor_note
+        await db.commit()
+
+    return {"id": packet_id, "auditor_note": body.auditor_note}
