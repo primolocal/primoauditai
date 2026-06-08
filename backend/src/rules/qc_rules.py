@@ -72,6 +72,9 @@ def run_qc_rules(
     # ── Exception Verification (suppressed for supplements — flags/manual entries expected) ──
     if not is_supplement:
         findings.extend(_check_exceptions(parsed_lines, parsed_metadata))
+    else:
+        # Supplements: only check A/M justification, not flags/manual entries
+        findings.extend(_check_exceptions_supplement(parsed_lines, parsed_metadata))
 
     return [f.to_dict() for f in findings if f.applies]
 
@@ -453,6 +456,27 @@ def _check_rates(
                     suggested_fix=f"Verify labor rate for {state} ZIP {zip_code}. Upper limit: ${result['upper_limit']:.2f}/hr",
                 )
             )
+
+    return findings
+def _check_exceptions_supplement(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    """Supplement exception checks — A/M justification only, no flags/manual entries."""
+    findings: list[QCFinding] = []
+
+    # A/M parts justification (still relevant for supplements)
+    am_lines = [l for l in parsed_lines if l.get("part_type") in {"A/M", "AF"}]
+    if am_lines:
+        findings.append(
+            QCFinding(
+                rule_id="EXCEP_003",
+                category="exception",
+                severity="medium",
+                description=f"Aftermarket (A/M) parts on {len(am_lines)} line(s) — verify shop justification",
+                line_numbers=[int(l["line_no"]) for l in am_lines if l["line_no"].isdigit()],
+                suggested_fix="Verify shop provided justification for aftermarket part selection",
+            )
+        )
 
     return findings
 

@@ -538,13 +538,13 @@ class PDFEstimateParser:
                         text = span["text"].strip()
                         if not text:
                             continue
-                        if abs(sx - rf_x) < 80 and sy > rf_y:
-                            # Stop at VEHICLE section or other headers
+                        if abs(sx - rf_x) < 30 and sy > rf_y:
+                            # Stop completely at VEHICLE section or other headers
                             if text.upper() in ("VEHICLE", "INTERIOR COLOR:", "EXTERIOR COLOR:", 
                                                 "LICENSE:", "VIN:", "ODOMETER:", "STATE:", "CONDITION:",
                                                 "TRANSMISSION", "CONVENIENCE", "SEATS", "POWER", "WHEELS",
-                                                "PAINT", "SAFETY"):
-                                break
+                                                "PAINT", "SAFETY", "FM RADIO"):
+                                return None
                             rf_lines.append((sy, text))
         if not rf_lines:
             return None
