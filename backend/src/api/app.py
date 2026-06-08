@@ -21,8 +21,13 @@ async def lifespan(app: FastAPI):
     logger.info("startup", app=settings.app_name, version=settings.app_version)
     # Auto-create tables if they don't exist
     from src.core.database import engine
-    from src.models.models import Base
+    from src.models.models import Base, QCPacket, QCPhoto, QCFinding
     async with engine.begin() as conn:
+        # Drop and recreate QC tables to pick up new columns
+        from sqlalchemy import text
+        await conn.execute(text("DROP TABLE IF EXISTS qc_findings CASCADE"))
+        await conn.execute(text("DROP TABLE IF EXISTS qc_photos CASCADE"))
+        await conn.execute(text("DROP TABLE IF EXISTS qc_packets CASCADE"))
         await conn.run_sync(Base.metadata.create_all)
     yield
     logger.info("shutdown")
