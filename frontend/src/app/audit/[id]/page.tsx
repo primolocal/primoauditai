@@ -105,8 +105,17 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
   const [reasonInput, setReasonInput] = React.useState("")
   const [savingId, setSavingId] = React.useState<string | null>(null)
   const [highlightLine, setHighlightLine] = React.useState<string | null>(null)
+  const lineScrollRef = React.useRef<HTMLDivElement>(null)
 
   const id = params.id
+
+  React.useEffect(() => {
+    if (!highlightLine || !lineScrollRef.current) return
+    const el = lineScrollRef.current.querySelector(`[data-line="${highlightLine}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, [highlightLine])
 
   const load = React.useCallback(() => {
     setLoading(true)
@@ -314,7 +323,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
         <div className="sticky top-14">
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
           <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
-            <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-0.5 max-h-[70vh] overflow-y-auto" ref={lineScrollRef}>
               {lines.length === 0 ? (
                 <p className="px-3 py-4 text-sm text-[#8b949e]">No parsed lines.</p>
               ) : (
@@ -334,6 +343,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
                     return (
                       <div
                         key={idx}
+                        data-line={line.line_no}
                         className={`rounded px-3 py-1.5 text-sm text-[#c9d1d9] ${bg}`}
                       >
                         <span className="text-[#8b949e] mr-2">{line.line_no}</span>
@@ -345,6 +355,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
                   return (
                     <div
                       key={idx}
+                      data-line={line.line_no}
                       className={`flex items-start gap-3 rounded px-3 py-1.5 text-xs transition-colors cursor-pointer ${bg} ${isHighlight ? "border-l-2 border-l-[#f0883e]" : ""}`}
                       onClick={() => setHighlightLine(line.line_no === highlightLine ? null : line.line_no)}
                     >
