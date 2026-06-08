@@ -68,7 +68,20 @@ async def create_qc(
 
 
     # Run QC rules (items tagged as manual_review)
-    qc_findings = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
+    qc_findings_raw = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
+    qc_findings = [
+        {
+            "rule_id": f.rule_id,
+            "category": f.category,
+            "severity": f.severity,
+            "description": f.description,
+            "line_numbers": list(f.line_numbers) if f.line_numbers else [],
+            "confidence": 1.0,
+            "applies": f.applies,
+            "suggested_fix": f.suggested_fix,
+        }
+        for f in qc_findings_raw
+    ]
 
     # Photo counts from checkboxes (human-verified)
     photo_counts = {
