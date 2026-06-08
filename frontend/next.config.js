@@ -13,6 +13,7 @@ const nextConfig = {
     ];
   },
   output: 'standalone',
+  env: { FORCE_REBUILD: "1780929012" },
 };
 
 module.exports = nextConfig;
