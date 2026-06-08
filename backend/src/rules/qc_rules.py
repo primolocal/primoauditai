@@ -1,0 +1,338 @@
+"""
+QC Rules Engine - Validates estimate + photo packets for quality control.
+Categories:
+  PHOTOCOV: Photo coverage completeness
+  COMPLETE: Estimate completeness (deductible, shop info, etc.)
+  STATEQC:  State compliance (thresholds, rates, ZIPs)
+  EXCEP:    Exception verification (supplements, A/M, LKQ transfers)
+"""
+
+import re
+from typing import Any
+
+
+class QCFinding:
+    """A single QC finding dict — matches DB model structure."""
+    def __init__(
+        self,
+        rule_id: str,
+        category: str,
+        severity: str,
+        description: str,
+        line_numbers: list[int] = None,
+        applies: bool = True,
+        suggested_fix: str = None,
+    ):
+        self.rule_id = rule_id
+        self.category = category
+        self.severity = severity
+        self.description = description
+        self.line_numbers = line_numbers or []
+        self.applies = applies
+        self.suggested_fix = suggested_fix
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rule_id": self.rule_id,
+            "category": self.category,
+            "severity": self.severity,
+            "description": self.description,
+            "line_numbers": self.line_numbers,
+            "confidence": 1.0,
+            "applies": self.applies,
+            "suggested_fix": self.suggested_fix,
+        }
+
+
+def run_qc_rules(
+    parsed_lines: list[dict[str, Any]],
+    parsed_metadata: dict[str, Any],
+    photos: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Run all QC rules against a parsed estimate + extracted photos.
+    
+    Returns list of QC finding dicts.
+    """
+    findings: list[QCFinding] = []
+
+    # ── Photo Coverage ──
+    findings.extend(_check_photo_coverage(photos, parsed_lines, parsed_metadata))
+
+    # ── Estimate Completeness ──
+    findings.extend(_check_estimate_completeness(parsed_lines, parsed_metadata))
+
+    # ── State Compliance ──
+    findings.extend(_check_state_compliance(parsed_lines, parsed_metadata))
+
+    # ── Exception Verification ──
+    findings.extend(_check_exceptions(parsed_lines, parsed_metadata))
+
+    return [f.to_dict() for f in findings if f.applies]
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PHOTO COVERAGE
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_photo_coverage(
+    photos: list[dict[str, Any]],
+    parsed_lines: list[dict[str, Any]],
+    meta: dict[str, Any],
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    photo_types = {p.get("photo_type", "") for p in photos}
+
+    # VIN photo
+    if "vin" not in photo_types:
+        findings.append(
+            QCFinding(
+                rule_id="PHOTOCOV_001",
+                category="photo_coverage",
+                severity="high",
+                description="VIN photo required but not found in packet",
+                suggested_fix="Upload VIN plate photo",
+            )
+        )
+
+    # Odometer photo
+    if "odometer" not in photo_types:
+        findings.append(
+            QCFinding(
+                rule_id="PHOTOCOV_002",
+                category="photo_coverage",
+                severity="high",
+                description="Odometer/mileage photo required but not found",
+                suggested_fix="Upload dashboard photo showing mileage",
+            )
+        )
+
+    # Damage photos: compare Replace operations to damage photos
+    replace_panels = set()
+    for line in parsed_lines:
+        if line.get("operation") == "Repl":
+            ln = line.get("line_no", "")
+            if ln and (isinstance(ln, str) and ln.isdigit()) or (isinstance(ln, int) and ln > 0):
+                panel = line.get("panel_name", "Unknown")
+                replace_panels.add(panel)
+
+    damage_panels = set()
+    for p in photos:
+        if p.get("photo_type") == "damage":
+            panel = p.get("vision_result", {}).get("panel", "")
+            if panel:
+                damage_panels.add(panel)
+
+    if replace_panels and not damage_panels:
+        findings.append(
+            QCFinding(
+                rule_id="PHOTOCOV_003",
+                category="photo_coverage",
+                severity="high",
+                description=f"Replace operations found ({len(replace_panels)} panels) but no damage photos",
+                suggested_fix="Upload photos of damaged panels listed in estimate",
+            )
+        )
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ESTIMATE COMPLETENESS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_estimate_completeness(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # Deductible
+    if meta.get("deductible") is None:
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_001",
+                category="completeness",
+                severity="medium",
+                description="Deductible amount not found on estimate",
+                suggested_fix="Verify deductible is listed on estimate or in notes",
+            )
+        )
+
+    # Shop information
+    if not meta.get("shop_name"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_002",
+                category="completeness",
+                severity="high",
+                description="Shop name missing from estimate header",
+                suggested_fix="Verify repair facility name is present",
+            )
+        )
+
+    if not meta.get("shop_address"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_003",
+                category="completeness",
+                severity="medium",
+                description="Shop address missing from estimate",
+                suggested_fix="Verify repair facility address is present",
+            )
+        )
+
+    # Insurance
+    if not meta.get("insurance_company"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_004",
+                category="completeness",
+                severity="high",
+                description="Insurance company not listed on estimate",
+                suggested_fix="Verify insurance company name is present",
+            )
+        )
+
+    # License plate
+    if not meta.get("license_plate"):
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_005",
+                category="completeness",
+                severity="medium",
+                description="License plate not recorded on estimate",
+                suggested_fix="Verify license plate is present in vehicle section",
+            )
+        )
+
+    # Odometer on estimate
+    if meta.get("odometer") is None:
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_006",
+                category="completeness",
+                severity="medium",
+                description="Odometer not recorded on estimate",
+                suggested_fix="Verify odometer reading is present",
+            )
+        )
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# STATE COMPLIANCE
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_state_compliance(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    state = meta.get("state", "")
+    zip_code = meta.get("zip_code", "")
+
+    if not state:
+        findings.append(
+            QCFinding(
+                rule_id="STATEQC_001",
+                category="state_compliance",
+                severity="high",
+                description="State not indicated on estimate",
+                suggested_fix="Verify state is present in vehicle/insured section",
+            )
+        )
+
+    if not zip_code:
+        findings.append(
+            QCFinding(
+                rule_id="STATEQC_002",
+                category="state_compliance",
+                severity="high",
+                description="ZIP code missing from estimate",
+                suggested_fix="Verify ZIP code is present in vehicle/insured or shop section",
+            )
+        )
+
+    # Total loss threshold check for TX (80%)
+    if state and state.upper() == "TX":
+        total = meta.get("total_estimate", 0) or 0
+        acv = meta.get("acv", 0) or 0
+        if acv and total and total >= 0.8 * acv:
+            findings.append(
+                QCFinding(
+                    rule_id="STATEQC_003",
+                    category="state_compliance",
+                    severity="critical",
+                    description=f"Estimate exceeds TX total loss threshold ({(total/acv):.0%} of ACV)",
+                    suggested_fix="Flag for total loss review or obtain NADA valuation",
+                )
+            )
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# EXCEPTION VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_exceptions(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # Supplement flags (** + S01/S02)
+    supp_lines = [l for l in parsed_lines if l.get("flag") == "**" or l.get("supplement")]
+    if supp_lines:
+        findings.append(
+            QCFinding(
+                rule_id="EXCEP_001",
+                category="exception",
+                severity="medium",
+                description=f"Supplement flags found on {len(supp_lines)} line(s) — verify documentation",
+                line_numbers=[int(l["line_no"]) for l in supp_lines if l["line_no"].isdigit()],
+                suggested_fix="Ensure prior supplement documentation is attached",
+            )
+        )
+
+    # Manual entries (# flag)
+    manual_lines = [l for l in parsed_lines if l.get("flag") == "#"]
+    if manual_lines:
+        findings.append(
+            QCFinding(
+                rule_id="EXCEP_002",
+                category="exception",
+                severity="medium",
+                description=f"Manual entry (#) found on {len(manual_lines)} line(s) — verify justification",
+                line_numbers=[int(l["line_no"]) for l in manual_lines if l["line_no"].isdigit()],
+                suggested_fix="Ensure justification is documented for each manual entry",
+            )
+        )
+
+    # A/M parts without justification
+    am_lines = [l for l in parsed_lines if l.get("part_type") in {"A/M", "AF"}]
+    if am_lines:
+        findings.append(
+            QCFinding(
+                rule_id="EXCEP_003",
+                category="exception",
+                severity="medium",
+                description=f"Aftermarket (A/M) parts on {len(am_lines)} line(s) — verify shop justification",
+                line_numbers=[int(l["line_no"]) for l in am_lines if l["line_no"].isdigit()],
+                suggested_fix="Verify shop provided justification for aftermarket part selection",
+            )
+        )
+
+    # LKQ parts — transfer lines
+    lkq_lines = [l for l in parsed_lines if l.get("part_type") in {"LKQ", "REC", "USED"}]
+    if lkq_lines:
+        findings.append(
+            QCFinding(
+                rule_id="EXCEP_004",
+                category="exception",
+                severity="medium",
+                description=f"LKQ/Used/Recycled parts on {len(lkq_lines)} line(s) — verify transfer operations",
+                line_numbers=[int(l["line_no"]) for l in lkq_lines if l["line_no"].isdigit()],
+                suggested_fix="Verify transfer lines are present for LKQ/Used part assemblies",
+            )
+        )
+
+    return findings

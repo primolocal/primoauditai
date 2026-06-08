@@ -128,3 +128,114 @@ class Photo(Base):
 
     def __repr__(self) -> str:
         return f"<Photo {self.filename} tags={len(self.tags)}>"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# QC (QUALITY CONTROL) MODELS
+# ═══════════════════════════════════════════════════════════════════════
+
+class QCPacket(Base):
+    """A QC review packet — estimate PDF + image PDF reviewed together."""
+    __tablename__ = "qc_packets"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    claim_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    vin: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    vehicle_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    vehicle_make: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    vehicle_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    odometer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    insurance_company: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    shop_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    shop_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deductible: Mapped[float | None] = mapped_column(Float, nullable=True)
+    state: Mapped[str | None] = mapped_column(String(2), nullable=True)
+
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    total_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    findings_count: Mapped[int] = mapped_column(Integer, default=0)
+    passed_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Estimate data
+    parsed_lines: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    parsed_panels: Mapped[dict[str, list[dict[str, Any]]] | None] = mapped_column(JSON, nullable=True)
+    parsed_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    # Photo counts
+    photo_total: Mapped[int] = mapped_column(Integer, default=0)
+    photo_vin: Mapped[int] = mapped_column(Integer, default=0)
+    photo_odometer: Mapped[int] = mapped_column(Integer, default=0)
+    photo_damage: Mapped[int] = mapped_column(Integer, default=0)
+    photo_other: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+    # Relationships
+    findings: Mapped[list["QCFinding"]] = relationship(back_populates="qc_packet", cascade="all, delete-orphan")
+    photos: Mapped[list["QCPhoto"]] = relationship(back_populates="qc_packet", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<QCPacket {self.id} claim={self.claim_number} status={self.status}>"
+
+
+class QCPhoto(Base):
+    """An extracted photo from the image PDF with classification."""
+    __tablename__ = "qc_photos"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    qc_packet_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("qc_packets.id", ondelete="CASCADE"))
+
+    page_num: Mapped[int] = mapped_column(Integer, default=0)
+    image_index: Mapped[int] = mapped_column(Integer, default=0)
+    filename: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=True)
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Classification via vision or rules
+    photo_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # photo_type values: "vin", "odometer", "damage", "license_plate", "overview", "other"
+    photo_type_confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    vision_result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    # Relationship
+    qc_packet: Mapped["QCPacket"] = relationship(back_populates="photos")
+
+    def __repr__(self) -> str:
+        return f"<QCPhoto {self.filename} type={self.photo_type}>"
+
+
+class QCFinding(Base):
+    """A single QC finding — photo coverage, estimate completeness, state compliance."""
+    __tablename__ = "qc_findings"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    qc_packet_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("qc_packets.id", ondelete="CASCADE"))
+
+    rule_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    line_numbers: Mapped[list[int]] = mapped_column(JSON, default=list)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    applies: Mapped[bool] = mapped_column(Boolean, default=True)
+    override_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="unreviewed")
+
+    # Additional QC context
+    photo_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    suggested_fix: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    # Relationship
+    qc_packet: Mapped["QCPacket"] = relationship(back_populates="findings")
+
+    def __repr__(self) -> str:
+        return f"<QCFinding {self.rule_id} {self.severity} {self.category}>"
+
