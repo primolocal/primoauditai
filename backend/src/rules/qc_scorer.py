@@ -104,8 +104,9 @@ def calculate_carrier_confidence(
             auto_reject = True
             complete_fails.append("AUTO-REJECT: Repair facility not fully listed on supplement")
         if shop_choice:
-            complete_score -= 5
-            complete_fails.append("Shop of Choice not acceptable on supplement")
+            complete_score -= 25
+            auto_reject = True
+            complete_fails.append("AUTO-REJECT: Shop of Choice not acceptable on supplement")
     else:
         if not shop_name and not shop_choice:
             complete_score -= 25

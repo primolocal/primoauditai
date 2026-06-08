@@ -282,7 +282,7 @@ def _check_estimate_completeness(
                 QCFinding(
                     rule_id="COMPLETE_008",
                     category="completeness",
-                    severity="medium",
+                    severity="high",
                     description="Shop of Choice not acceptable on supplement — full shop info required",
                     suggested_fix="Replace Shop of Choice with actual repair facility name and address",
                 )
