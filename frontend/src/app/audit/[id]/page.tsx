@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, AlertTriangle, CheckCircle, HelpCircle, Ban, X as XIcon } from "lucide-react"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const API_KEY="pa_d...face ParsedLine {
+const API_KEY = "pa_dev_key"
+
+interface ParsedLine {
   line_no: string
   is_header?: boolean
   panel_name?: string
@@ -208,7 +210,6 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
       if (f.status === "unreviewed" || f.status === "questionable") {
         lineStatus.set(s, "needs-review")
       } else if (!lineStatus.has(s)) {
-        // Only set resolved if not already marked needs-review
         lineStatus.set(s, "resolved")
       }
     })
@@ -389,27 +390,35 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
                         {line.line_no}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 truncate">
                           {line.flag && <span className="text-[#f0883e] font-bold">{line.flag}</span>}
                           {line.operation && (
                             <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>
                           )}
                           <span className="text-[#c9d1d9] truncate">{line.description}</span>
-                          {isRef && lineStatus.get(line.line_no) === "resolved" && (
-                            <CheckCircle className="h-3.5 w-3.5 text-green-400 shrink-0" />
-                          )}
-                          {isRef && lineStatus.get(line.line_no) === "needs-review" && (
-                            <XIcon className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                          )}
                         </div>
+                        {(line.part_number || line.quantity || line.part_price || line.labor_hours || line.paint_hours || line.total) && (
+                          <div className="mt-0.5 flex gap-3 text-[#484f58]">
+                            {line.part_number && <span>PN: {line.part_number}</span>}
+                            {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
+                            {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
+                            {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
+                            {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
+                            {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
+                          </div>
+                        )}
                         <div className="mt-0.5 flex items-center gap-2 flex-wrap text-[#484f58]">
                           {line.part_type && <PartTypeBadge part_type={line.part_type} />}
-                          {line.part_number && <span>PN: {line.part_number}</span>}
-                          {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
-                          {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
-                          {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
-                          {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
-                          {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
+                          {isRef && lineStatus.get(line.line_no) === "resolved" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-green-400">
+                              <CheckCircle className="h-3 w-3" /> Approved
+                            </span>
+                          )}
+                          {isRef && lineStatus.get(line.line_no) === "needs-review" && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
+                              <AlertTriangle className="h-3 w-3" /> Needs Review
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
