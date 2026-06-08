@@ -47,18 +47,22 @@ def calculate_carrier_confidence(
             findings_by_cat[cat].append(f)
     
     # ════════════════════ Photo Coverage (25 pts) ════════════════════
+    auto_reject = False
     photo_score = 25
     photo_fails: list[str] = []
     
     if photo_counts.get("vin", 0) == 0:
-        photo_score -= 8
-        photo_fails.append("VIN photo missing")
+        photo_score -= 25
+        auto_reject = True
+        photo_fails.append("AUTO-REJECT: VIN photo missing from packet")
     if photo_counts.get("odometer", 0) == 0:
-        photo_score -= 8
-        photo_fails.append("Odometer photo missing")
+        photo_score -= 25
+        auto_reject = True
+        photo_fails.append("AUTO-REJECT: Odometer photo missing from packet")
     if photo_counts.get("damage", 0) == 0:
-        photo_score -= 9
-        photo_fails.append("Damage photos missing")
+        photo_score -= 25
+        auto_reject = True
+        photo_fails.append("AUTO-REJECT: Damage photos missing from packet")
     
     photo_score = max(photo_score, 0)
     score_breakdown["photo_coverage"] = photo_score
@@ -149,7 +153,7 @@ def calculate_carrier_confidence(
     return QCScoreResult(
         total_score=total,
         max_score=100,
-        ready_for_carrier=total >= 70,
+        ready_for_carrier=not auto_reject and total >= 70,
         score_breakdown=score_breakdown,
         rejection_reasons=rejection_reasons,
         auditor_note=auto_note,
