@@ -75,12 +75,7 @@ def calculate_carrier_confidence(
     if not metadata.get("deductible"):
         complete_score -= 5
         complete_fails.append("Deductible not specified")
-    if not metadata.get("shop_name"):
-        complete_score -= 5
-        complete_fails.append("Shop name missing")
-    if not metadata.get("shop_address"):
-        complete_score -= 5
-        complete_fails.append("Shop address missing")
+    # Shop info covered by COMPLETE_007 auto-reject — skip individual penalties
     # Insurance — try multiple keys
     insurance = metadata.get("insurance_company") or metadata.get("insurer") or metadata.get("carrier")
     if not insurance:

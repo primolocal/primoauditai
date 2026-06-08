@@ -95,6 +95,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const [auditorNote, setAuditorNote] = React.useState("")
   const [noteSaving, setNoteSaving] = React.useState(false)
   const [noteSaved, setNoteSaved] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
   const [findings, setFindings] = React.useState<Finding[]>([])
   const [highlightLines, setHighlightLines] = React.useState<Set<number>>(new Set())
   const packetRef = React.useRef<QCPacket | null>(null)
@@ -160,6 +161,13 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
     } catch (e) {
       setError("Failed to save note")
     } finally { setNoteSaving(false) }
+  }
+
+  function copyNote() {
+    navigator.clipboard.writeText(auditorNote).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
   }
 
   if (loading) return <div className="p-6 text-sm text-[#8b949e]">Loading...</div>

@@ -181,28 +181,7 @@ def _check_estimate_completeness(
             )
         )
 
-    # Shop information
-    if not meta.get("shop_name"):
-        findings.append(
-            QCFinding(
-                rule_id="COMPLETE_002",
-                category="completeness",
-                severity="high",
-                description="Shop name missing from estimate header",
-                suggested_fix="Verify repair facility name is present",
-            )
-        )
-
-    if not meta.get("shop_address"):
-        findings.append(
-            QCFinding(
-                rule_id="COMPLETE_003",
-                category="completeness",
-                severity="medium",
-                description="Shop address missing from estimate",
-                suggested_fix="Verify repair facility address is present",
-            )
-        )
+    # Shop info is covered by COMPLETE_007 — suppress individual name/address checks
 
     # Insurance (use any of these keys: insurance_company, insurer, carrier)
     insurance = meta.get("insurance_company") or meta.get("insurer") or meta.get("carrier")
