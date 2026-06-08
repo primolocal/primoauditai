@@ -93,8 +93,9 @@ def calculate_carrier_confidence(
         complete_score -= 2
         complete_fails.append("Odometer missing from estimate")
     if metadata.get("shop_name") and not metadata.get("shop_of_choice"):
-        complete_score -= 5
-        complete_fails.append("Shop of Choice not designated")
+        complete_score -= 25
+        auto_reject = True
+        complete_fails.append("AUTO-REJECT: Shop of Choice not designated")
     if not metadata.get("shop_name") and not metadata.get("shop_address"):
         complete_score -= 5
         complete_fails.append("No repair facility listed")

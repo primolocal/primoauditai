@@ -259,16 +259,26 @@ def _check_estimate_completeness(
             )
         )
 
-    # Shop of Choice — must have shop name OR shop of choice designation
+    # Shop of Choice — must be designated. Missing = reject
     has_shop = bool(meta.get("shop_name") or meta.get("shop_address"))
-    if not has_shop:
+    if has_shop and not meta.get("shop_of_choice"):
         findings.append(
             QCFinding(
                 rule_id="COMPLETE_007",
                 category="completeness",
                 severity="high",
-                description="No repair facility listed — shop name or Shop of Choice required",
-                suggested_fix="Repair facility must be identified on estimate, or Shop of Choice/Owner's Choice designated",
+                description="Shop of Choice not designated on estimate — required for carrier submission",
+                suggested_fix="Verify Shop of Choice / Owner's Choice is selected on estimate",
+            )
+        )
+    elif not has_shop:
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_007",
+                category="completeness",
+                severity="high",
+                description="No repair facility listed on estimate",
+                suggested_fix="Repair facility must be identified",
             )
         )
 
