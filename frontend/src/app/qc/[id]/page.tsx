@@ -20,6 +20,7 @@ interface ParsedLine {
   paint_hours?: number
   total?: number
   part_type?: string
+  flag?: string
 }
 
 interface QCFindingData {
@@ -52,6 +53,10 @@ interface QCPacketData {
   photo_vin: number
   photo_odometer: number
   photo_damage: number
+  carrier_confidence_score: number
+  carrier_ready: boolean
+  rejection_reasons: string[]
+  auditor_note: string | null
   parsed_lines: ParsedLine[] | null
   findings: QCFindingData[]
   photos: QCPhotoData[]
@@ -139,6 +144,45 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         </button>
         <h1 className="text-xl font-semibold text-[#c9d1d9]">{packet.claim_number || "Untitled QC Packet"}</h1>
         <p className="text-sm text-[#8b949e]">{packet.vehicle}</p>
+      </div>
+
+      {/* Carrier Confidence Score */}
+      <div className="mb-6 rounded-lg border border-[#21262d] bg-[#161b22] p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">Carrier Confidence</p>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className={`text-4xl font-bold ${packet.carrier_ready ? 'text-green-400' : 'text-red-400'}`}>
+                {packet.carrier_confidence_score}
+              </span>
+              <span className="text-lg text-[#484f58]">/100</span>
+            </div>
+          </div>
+          <div className={`rounded-full px-4 py-2 text-sm font-semibold ${packet.carrier_ready ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+            {packet.carrier_ready ? '✓ Ready for Carrier' : '✗ Not Ready'}
+          </div>
+        </div>
+
+        {/* Rejection Reasons */}
+        {packet.rejection_reasons && packet.rejection_reasons.length > 0 && (
+          <div className="mt-4 border-t border-[#21262d] pt-4">
+            <p className="mb-2 text-xs font-semibold text-[#8b949e] uppercase">Rejection Reasons</p>
+            <ul className="space-y-1">
+              {packet.rejection_reasons.map((reason, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-[#c9d1d9]">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+                  {reason}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Auditor Note */}
+        <div className="mt-4 border-t border-[#21262d] pt-4">
+          <p className="mb-2 text-xs font-semibold text-[#8b949e] uppercase">Auditor Note</p>
+          <p className="text-sm text-[#c9d1d9]">{packet.auditor_note || 'No note provided.'}</p>
+        </div>
       </div>
 
       {/* Photo Coverage Summary */}
