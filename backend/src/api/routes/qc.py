@@ -68,22 +68,27 @@ async def create_qc(
 
 
     # Run QC rules (returns dicts from to_dict())
-    # For supplements, only check lines that were added/changed in this supplement
+    # For supplements, only check lines that were added/changed in THIS supplement
     qc_lines = parsed_lines
     is_supp = parsed_metadata.get("is_supplement", False)
     if is_supp:
+        supp_ver = parsed_metadata.get("supplement_version", 0)
+        # Match lines with the supplement code S01, S02, etc. matching this version
+        target_supp = f"S{supp_ver:02d}"
         qc_lines = [
             ln for ln in parsed_lines
-            if ln.get("flag") or ln.get("supplement")
+            if ln.get("supplement", "") == target_supp or ln.get("flag") in ("**", "*", "#")
+            or ln.get("is_header", False)
         ]
-        if not qc_lines:
-            qc_lines = parsed_lines  # fallback to all lines if no supplement markers
+        if len([l for l in qc_lines if not l.get("is_header")]) == 0:
+            qc_lines = parsed_lines  # fallback: no supplement-marked lines found
 
     qc_findings = run_qc_rules(
         qc_lines, parsed_metadata, classified_photos,
         vin_present=vin_present,
         odo_present=odo_present,
         damage_present=damage_present,
+        is_supplement=is_supp,
     )
 
     # Photo counts from checkboxes (human-verified)

@@ -51,6 +51,7 @@ def run_qc_rules(
     vin_present: bool = False,
     odo_present: bool = False,
     damage_present: bool = False,
+    is_supplement: bool = False,
 ) -> list[dict[str, Any]]:
     """Run all QC rules against a parsed estimate + extracted photos."""
     findings: list[QCFinding] = []
@@ -65,8 +66,9 @@ def run_qc_rules(
     # ── State Compliance ──
     findings.extend(_check_state_compliance(parsed_lines, parsed_metadata))
 
-    # ── Exception Verification ──
-    findings.extend(_check_exceptions(parsed_lines, parsed_metadata))
+    # ── Exception Verification (suppressed for supplements — flags/manual entries expected) ──
+    if not is_supplement:
+        findings.extend(_check_exceptions(parsed_lines, parsed_metadata))
 
     return [f.to_dict() for f in findings if f.applies]
 

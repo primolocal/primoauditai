@@ -80,6 +80,14 @@ class PDFEstimateParser:
         metadata["document_type"] = "pdf_estimate"
         metadata["is_supplement"] = ("supplement" in all_text[:2000].lower())
 
+        # Detect supplement version from title
+        if metadata["is_supplement"]:
+            m = re.search(r"Supplement of Record\s+(\d+)", all_text[:2000], re.I)
+            if m:
+                metadata["supplement_version"] = int(m.group(1))
+            else:
+                metadata["supplement_version"] = 0
+
         # Derive state from shop ZIP if available
         shop_addr = metadata.get("shop_address", "")
         if shop_addr:
