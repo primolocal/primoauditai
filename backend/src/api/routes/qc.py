@@ -68,7 +68,12 @@ async def create_qc(
 
 
     # Run QC rules (returns dicts from to_dict())
-    qc_findings = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
+    qc_findings = run_qc_rules(
+        parsed_lines, parsed_metadata, classified_photos,
+        vin_present=vin_present,
+        odo_present=odo_present,
+        damage_present=damage_present,
+    )
 
     # Photo counts from checkboxes (human-verified)
     photo_v = 1 if vin_present else 0

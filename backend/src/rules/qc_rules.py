@@ -48,15 +48,16 @@ def run_qc_rules(
     parsed_lines: list[dict[str, Any]],
     parsed_metadata: dict[str, Any],
     photos: list[dict[str, Any]],
+    vin_present: bool = False,
+    odo_present: bool = False,
+    damage_present: bool = False,
 ) -> list[dict[str, Any]]:
-    """Run all QC rules against a parsed estimate + extracted photos.
-    
-    Returns list of QC finding dicts.
-    """
+    """Run all QC rules against a parsed estimate + extracted photos."""
     findings: list[QCFinding] = []
 
-    # ── Photo Coverage ──
-    findings.extend(_check_photo_coverage(photos, parsed_lines, parsed_metadata))
+    # ── Photo Coverage (only if checkboxes not already checked) ──
+    if not (vin_present and odo_present and damage_present):
+        findings.extend(_check_photo_coverage(photos, parsed_lines, parsed_metadata, vin_present, odo_present, damage_present))
 
     # ── Estimate Completeness ──
     findings.extend(_check_estimate_completeness(parsed_lines, parsed_metadata))
@@ -78,12 +79,15 @@ def _check_photo_coverage(
     photos: list[dict[str, Any]],
     parsed_lines: list[dict[str, Any]],
     meta: dict[str, Any],
+    vin_present: bool = False,
+    odo_present: bool = False,
+    damage_present: bool = False,
 ) -> list[QCFinding]:
     findings: list[QCFinding] = []
     photo_types = {p.get("photo_type", "") for p in photos}
 
     # VIN photo
-    if "vin" not in photo_types:
+    if not vin_present and "vin" not in photo_types:
         findings.append(
             QCFinding(
                 rule_id="PHOTOCOV_001",
@@ -95,7 +99,7 @@ def _check_photo_coverage(
         )
 
     # Odometer photo
-    if "odometer" not in photo_types:
+    if not odo_present and "odometer" not in photo_types:
         findings.append(
             QCFinding(
                 rule_id="PHOTOCOV_002",
@@ -107,31 +111,43 @@ def _check_photo_coverage(
         )
 
     # Damage photos: compare Replace operations to damage photos
-    replace_panels = set()
-    for line in parsed_lines:
-        if line.get("operation") == "Repl":
-            ln = line.get("line_no", "")
-            if ln and (isinstance(ln, str) and ln.isdigit()) or (isinstance(ln, int) and ln > 0):
-                panel = line.get("panel_name", "Unknown")
-                replace_panels.add(panel)
-
-    damage_panels = set()
-    for p in photos:
-        if p.get("photo_type") == "damage":
-            panel = p.get("vision_result", {}).get("panel", "")
-            if panel:
-                damage_panels.add(panel)
-
-    if replace_panels and not damage_panels:
-        findings.append(
-            QCFinding(
-                rule_id="PHOTOCOV_003",
-                category="photo_coverage",
-                severity="high",
-                description=f"Replace operations found ({len(replace_panels)} panels) but no damage photos",
-                suggested_fix="Upload photos of damaged panels listed in estimate",
+    if not damage_present and "damage" not in photo_types:
+        replace_panels = set()
+        for line in parsed_lines:
+            if line.get("operation") == "Repl":
+                ln = line.get("line_no", "")
+                if ln and ((isinstance(ln, str) and ln.isdigit()) or (isinstance(ln, int) and ln > 0)):
+                    panel = line.get("panel_name", "Unknown")
+                    replace_panels.add(panel)
+        if replace_panels:
+            findings.append(
+                QCFinding(
+                    rule_id="PHOTOCOV_003",
+                    category="photo_coverage",
+                    severity="high",
+                    description=f"Replace operations found ({len(replace_panels)} panels) but no damage photos",
+                    suggested_fix="Upload photos of damaged panels listed in estimate",
+                )
             )
-        )
+
+    # Damage to non-replaced panels (needs documentation)
+    if damage_present:
+        body_panels = set()
+        for line in parsed_lines:
+            op = line.get("operation", "")
+            if op in ("Rpr", "R&I", "Repl"):
+                panel = line.get("panel_name", "")
+                if panel:
+                    body_panels.add(panel)
+        if not body_panels:
+            findings.append(
+                QCFinding(
+                    rule_id="PHOTOCOV_004",
+                    category="photo_coverage",
+                    severity="low",
+                    description="No body/paint operations found — verify damage photos show all impact areas",
+                )
+            )
 
     return findings
 
