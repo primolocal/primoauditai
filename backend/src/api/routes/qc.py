@@ -68,8 +68,19 @@ async def create_qc(
 
 
     # Run QC rules (returns dicts from to_dict())
+    # For supplements, only check lines that were added/changed in this supplement
+    qc_lines = parsed_lines
+    is_supp = parsed_metadata.get("is_supplement", False)
+    if is_supp:
+        qc_lines = [
+            ln for ln in parsed_lines
+            if ln.get("flag") or ln.get("supplement")
+        ]
+        if not qc_lines:
+            qc_lines = parsed_lines  # fallback to all lines if no supplement markers
+
     qc_findings = run_qc_rules(
-        parsed_lines, parsed_metadata, classified_photos,
+        qc_lines, parsed_metadata, classified_photos,
         vin_present=vin_present,
         odo_present=odo_present,
         damage_present=damage_present,
@@ -108,10 +119,10 @@ async def create_qc(
             shop_name=parsed_metadata.get("shop_name"),
             shop_address=parsed_metadata.get("shop_address"),
             deductible=parsed_metadata.get("deductible"),
-            state=parsed_metadata.get("state"),
+            state=parsed_metadata.get("state") or parsed_metadata.get("vehicle_state"),
             status="completed",
             total_estimate=parsed_metadata.get("total_estimate"),
-            parsed_lines=parsed_lines,
+            parsed_lines=parsed_lines,  # store ALL lines, not just qc_lines
             parsed_panels=parsed_panels,
             parsed_metadata=parsed_metadata,
             **photo_counts,

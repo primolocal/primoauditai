@@ -8,7 +8,7 @@ function api(path: string): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL + path
   return path
 }
-const API_KEY="padevkey"
+const API_KEY="pa_d...face ParsedLine {
   line_no: string
   is_header?: boolean
   panel_name?: string
@@ -117,9 +117,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
 
   function onFindingClick(finding: Finding) {
     const lines = finding.line_numbers
-    if (lines && lines.length > 0) {
-      setHighlightLines(new Set(lines))
-    }
+    if (lines && lines.length > 0) setHighlightLines(new Set(lines))
   }
 
   function updateFindingStatus(findingId: string, newStatus: string) {
@@ -178,15 +176,12 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         <p className="text-sm text-[#8b949e]">{packet.vehicle}</p>
       </div>
 
-      {/* Carrier Confidence Score */}
       <div className="mb-6 rounded-lg border border-[#21262d] bg-[#161b22] p-6">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">Carrier Confidence</p>
             <div className="mt-2 flex items-baseline gap-2">
-              <span className={"text-4xl font-bold " + (packet.carrier_ready ? "text-green-400" : "text-red-400")}>
-                {packet.carrier_confidence_score}
-              </span>
+              <span className={"text-4xl font-bold " + (packet.carrier_ready ? "text-green-400" : "text-red-400")}>{packet.carrier_confidence_score}</span>
               <span className="text-lg text-[#484f58]">/100</span>
             </div>
           </div>
@@ -194,32 +189,23 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
             {packet.carrier_ready ? "✓ Ready for Carrier" : "✗ Not Ready"}
           </div>
         </div>
-
         {packet.rejection_reasons && packet.rejection_reasons.length > 0 && (
           <div className="mt-4 border-t border-[#21262d] pt-4">
             <p className="mb-2 text-xs font-semibold text-[#8b949e] uppercase">Rejection Reasons</p>
             <ul className="space-y-1">
               {packet.rejection_reasons.map((reason, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-[#c9d1d9]">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />{reason}
-                </li>
+                <li key={i} className="flex items-start gap-2 text-sm text-[#c9d1d9]"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />{reason}</li>
               ))}
             </ul>
           </div>
         )}
       </div>
 
-      {/* Two-column layout: Findings left, Estimate Lines right */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
-        {/* LEFT: Findings */}
         <div>
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({packet.findings_count})</h2>
-
           {packet.findings_count === 0 ? (
-            <div className="flex items-center gap-2 text-green-400">
-              <CheckCircle className="h-5 w-5" />
-              <span className="text-sm font-semibold">No exceptions — packet passes QC</span>
-            </div>
+            <div className="flex items-center gap-2 text-green-400"><CheckCircle className="h-5 w-5" /><span className="text-sm font-semibold">No exceptions — packet passes QC</span></div>
           ) : (
             <div className="space-y-4">
               {Object.entries(findingsByCat).map(([cat, catFindings]) => (
@@ -233,30 +219,23 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
                             <SeverityBadge severity={f.severity} />
-                            {f.line_numbers?.length > 0 && (
-                              <span className="text-xs text-[#58a6ff] font-mono cursor-pointer">L{f.line_numbers.join(", ")}</span>
-                            )}
+                            {f.line_numbers?.length > 0 && <span className="text-xs text-[#58a6ff] font-mono">L{f.line_numbers.join(", ")}</span>}
                           </div>
                           <StatusToggle findingId={f.id} status={f.status} onChange={updateFindingStatus} />
                         </div>
                         <p className="mb-1 text-sm text-[#c9d1d9]">{f.description}</p>
-                        {f.suggested_fix && (
-                          <p className="text-xs text-[#8b949e]">Fix: {f.suggested_fix}</p>
-                        )}
+                        {f.suggested_fix && <p className="text-xs text-[#8b949e]">Fix: {f.suggested_fix}</p>}
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
-
-              {/* Auditor Note + Submit */}
               <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-6">
                 <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Submit QC Report</h3>
                 <div className="mb-3">
                   <label className="mb-1 block text-xs text-[#8b949e]">Rejection Note / Message to Auditor</label>
                   <textarea value={auditorNote} onChange={(e) => setAuditorNote(e.target.value)} rows={4}
-                    className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff] resize-y"
-                    placeholder="Enter rejection note or message for the auditor..." />
+                    className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff] resize-y" placeholder="Enter rejection note or message for the auditor..." />
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={saveNote} disabled={noteSaving}
@@ -270,7 +249,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        {/* RIGHT: Estimate Lines */}
         <div className="sticky top-14">
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
           <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
@@ -283,12 +261,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
                   const isHighlighted = highlightLines.has(Number(line.line_no))
                   const bg = isHeader ? "bg-[#21262d] font-semibold" : isHighlighted ? "bg-[#f0883e]/10 border-l-2 border-l-[#f0883e]" : "hover:bg-[#0d1117]"
                   if (isHeader) {
-                    return (
-                      <div key={idx} className={"rounded px-3 py-1.5 text-sm text-[#c9d1d9] " + bg}>
-                        <span className="text-[#8b949e] mr-2">{line.line_no}</span>
-                        {line.panel_name || line.description || ""}
-                      </div>
-                    )
+                    return <div key={idx} className={"rounded px-3 py-1.5 text-sm text-[#c9d1d9] " + bg}><span className="text-[#8b949e] mr-2">{line.line_no}</span>{line.panel_name || line.description || ""}</div>
                   }
                   return (
                     <div key={idx} className={"flex items-start gap-3 rounded px-3 py-1.5 text-xs " + bg + (isHighlighted ? " ring-1 ring-[#f0883e]/30" : "")}>

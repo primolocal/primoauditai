@@ -78,6 +78,7 @@ class PDFEstimateParser:
 
         metadata["estimate_tax_rate"] = tax_rate
         metadata["document_type"] = "pdf_estimate"
+        metadata["is_supplement"] = ("supplement" in all_text[:2000].lower())
 
         # Derive state from shop ZIP if available
         shop_addr = metadata.get("shop_address", "")
