@@ -41,6 +41,8 @@ interface QCPhotoData {
   photo_type: string | null
   width: number
   height: number
+  page_num: number | null
+  thumbnail: string | null
 }
 
 interface QCPacketData {
@@ -296,6 +298,13 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
             }
             return (
               <div key={p.id} className={`rounded-lg border p-3 ${typeColors[p.photo_type || "other"] || typeColors.other}`}>
+                {p.thumbnail ? (
+                  <img src={p.thumbnail} alt={p.filename} className="mb-2 w-full rounded object-cover" style={{ maxHeight: 200 }} />
+                ) : (
+                  <div className="mb-2 flex h-32 items-center justify-center rounded bg-[#21262d] text-xs text-[#484f58]">
+                    No preview
+                  </div>
+                )}
                 <p className="text-sm font-medium text-[#c9d1d9]">{p.filename}</p>
                 <p className="text-xs text-[#8b949e]">Type: {p.photo_type || "unknown"}</p>
                 <p className="text-xs text-[#484f58]">{p.width} x {p.height}</p>

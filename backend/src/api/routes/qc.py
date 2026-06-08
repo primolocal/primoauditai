@@ -2,10 +2,11 @@
 QC (Quality Control) API Routes
 POST /api/qc          — Upload estimate + image PDF, run QC review
 GET  /api/qc          — List QC packets
-GET  /api/qc/{id}     — Get QC packet detail
+GET  /api/qc/{id}     — Get QC packet detail (includes photo thumbnails)
 PATCH /api/qc/{id}/findings/{fid} — Update finding status
 """
 
+import base64
 import os
 import shutil
 import tempfile
@@ -36,9 +37,17 @@ async def create_qc(
     request: Request,
     estimate_pdf: UploadFile = File(...),
     image_pdf: UploadFile = File(...),
+    vin_photo_present: str = Form("false"),
+    odometer_photo_present: str = Form("false"),
+    damage_photos_present: str = Form("false"),
 ) -> dict[str, Any]:
     """Upload estimate PDF + image PDF, run QC review, store results."""
     
+    # Parse checkbox values
+    vin_present = vin_photo_present.lower() == "true"
+    odo_present = odometer_photo_present.lower() == "true"
+    damage_present = damage_photos_present.lower() == "true"
+
     # Validate file types
     if not estimate_pdf.filename or not estimate_pdf.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="estimate_pdf must be PDF")
@@ -71,20 +80,32 @@ async def create_qc(
     photo_dir.mkdir(parents=True, exist_ok=True)
     saved_photos = save_photos_to_disk(photos_raw, photo_dir)
 
-    # Classify photos (basic first — can enhance with vision later)
-    classified_photos = _classify_photos(saved_photos)
+    # Build photo list for QC (no auto-classification — manual review only)
+    classified_photos: list[dict[str, Any]] = []
+    for idx, p in enumerate(saved_photos):
+        photo_bytes = p.get("bytes", b"")
+        b64 = base64.b64encode(photo_bytes).decode() if photo_bytes else ""
+        classified_photos.append({
+            "page_num": p.get("page_num", 0),
+            "image_index": p.get("image_index", idx),
+            "file_path": p.get("file_path", ""),
+            "width": p.get("width", 0),
+            "height": p.get("height", 0),
+            "photo_type": "manual_review",
+            "photo_type_confidence": 0.0,
+            "thumbnail_b64": f"data:image/jpeg;base64,{b64}",
+        })
 
-    # Run QC rules
+    # Run QC rules (items tagged as manual_review)
     qc_findings = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
 
-    # Count photo types
-    photo_types = [p.get("photo_type", "other") for p in classified_photos]
+    # Photo counts from checkboxes (human-verified)
     photo_counts = {
-        "photo_total": len(photo_types),
-        "photo_vin": photo_types.count("vin"),
-        "photo_odometer": photo_types.count("odometer"),
-        "photo_damage": photo_types.count("damage"),
-        "photo_other": photo_types.count("other") + photo_types.count("license_plate") + photo_types.count("overview"),
+        "photo_total": len(classified_photos),
+        "photo_vin": 1 if vin_present else 0,
+        "photo_odometer": 1 if odo_present else 0,
+        "photo_damage": 1 if damage_present else 0,
+        "photo_other": len(classified_photos) - (int(vin_present) + int(odo_present) + int(damage_present)),
     }
 
     # Calculate carrier confidence score
@@ -93,7 +114,6 @@ async def create_qc(
         photo_counts,
         parsed_metadata,
     )
-
 
     # Persist to DB
     async with async_session() as db:
@@ -141,12 +161,7 @@ async def create_qc(
 
         # Generate training dataset
         await db.flush()
-        
-        # Get findings back for dataset export
-        findings_res = await db.execute(select(QCFinding).filter(QCFinding.qc_packet_id == packet_id))
-        db_findings = findings_res.scalars().all()
-        
-        # Build export packet dict
+
         export_pkt = {
             "id": str(packet_id),
             "created_at": None,
@@ -157,16 +172,11 @@ async def create_qc(
             "photo_odometer": photo_counts["photo_odometer"],
             "photo_damage": photo_counts["photo_damage"],
         }
-        
-        dataset = export_training_dataset(
-            export_pkt,
-            qc_findings,
-            score_result,
-        )
-        
+
+        dataset = export_training_dataset(export_pkt, qc_findings, score_result)
         packet.training_dataset = dataset
 
-        # Add photos
+        # Add photos (store thumbnails in DB for later retrieval)
         for p in classified_photos:
             db.add(QCPhoto(
                 id=uuid.uuid4(),
@@ -177,10 +187,9 @@ async def create_qc(
                 file_path=p.get("file_path"),
                 width=p.get("width", 0),
                 height=p.get("height", 0),
-                file_size=len(p.get("bytes", b"")),
+                file_size=len(base64.b64decode(p.get("thumbnail_b64", "").replace("data:image/jpeg;base64,", ""))),
                 photo_type=p.get("photo_type"),
                 photo_type_confidence=p.get("photo_type_confidence", 0.0),
-                vision_result=p.get("vision_result"),
             ))
 
         await db.commit()
@@ -229,7 +238,7 @@ async def list_qc(request: Request) -> dict[str, Any]:
 
 @router.get("/{packet_id}")
 async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
-    """Get a single QC packet with findings and photos."""
+    """Get a single QC packet with findings and photo thumbnails."""
     packet_uuid = uuid.UUID(packet_id)
     async with async_session() as db:
         result = await db.execute(select(QCPacket).filter(QCPacket.id == packet_uuid))
@@ -242,6 +251,28 @@ async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
 
         photos_res = await db.execute(select(QCPhoto).filter(QCPhoto.qc_packet_id == packet_uuid))
         photos = photos_res.scalars().all()
+
+    # Generate thumbnails from saved photo files
+    photo_items = []
+    for p in photos:
+        thumb = None
+        if p.file_path and os.path.exists(p.file_path):
+            try:
+                with open(p.file_path, "rb") as f:
+                    raw = f.read()
+                b64 = base64.b64encode(raw).decode()
+                thumb = f"data:image/jpeg;base64,{b64}"
+            except Exception:
+                pass
+        photo_items.append({
+            "id": str(p.id),
+            "filename": p.filename,
+            "photo_type": p.photo_type,
+            "width": p.width,
+            "height": p.height,
+            "page_num": p.page_num,
+            "thumbnail": thumb,
+        })
 
     return {
         "id": str(packet.id),
@@ -273,48 +304,5 @@ async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
             }
             for f in findings
         ],
-        "photos": [
-            {
-                "id": str(p.id),
-                "filename": p.filename,
-                "photo_type": p.photo_type,
-                "width": p.width,
-                "height": p.height,
-                "page_num": p.page_num,
-            }
-            for p in photos
-        ],
+        "photos": photo_items,
     }
-
-
-def _classify_photos(photos: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Basic photo classification — vision can be added later.
-    
-    Rules:
-    - Small narrow images (~300x~100) → VIN plate
-    - Images with odometer-like aspect ratio ~2:1 → odometer
-    - Large images with panel shape → damage
-    - Others → overview/other
-    """
-    for p in photos:
-        w = p.get("width", 0)
-        h = p.get("height", 0)
-        aspect_ratio = w / h if h > 0 else 0
-
-        # VIN plates are typically very wide: narrow, 300-500px wide, 80-150px tall
-        if aspect_ratio > 3.0 and h < 200:
-            p["photo_type"] = "vin"
-            p["photo_type_confidence"] = 0.6
-        # Odometer is typically wide but taller
-        elif 1.5 < aspect_ratio < 3.0 and h < 300:
-            p["photo_type"] = "odometer"
-            p["photo_type_confidence"] = 0.5
-        # Damage photos are typically larger, varied aspect
-        elif w > 500 and h > 500:
-            p["photo_type"] = "damage"
-            p["photo_type_confidence"] = 0.7
-        else:
-            p["photo_type"] = "other"
-            p["photo_type_confidence"] = 0.3
-
-    return photos

@@ -32,6 +32,9 @@ export default function QCPage() {
 
   const [estimatePdf, setEstimatePdf] = React.useState<File | null>(null)
   const [imagePdf, setImagePdf] = React.useState<File | null>(null)
+  const [vinPresent, setVinPresent] = React.useState(false)
+  const [odoPresent, setOdoPresent] = React.useState(false)
+  const [damagePresent, setDamagePresent] = React.useState(false)
 
   React.useEffect(() => {
     loadPackets()
@@ -60,6 +63,9 @@ export default function QCPage() {
     const form = new FormData()
     form.append("estimate_pdf", estimatePdf)
     form.append("image_pdf", imagePdf)
+    form.append("vin_photo_present", String(vinPresent))
+    form.append("odometer_photo_present", String(odoPresent))
+    form.append("damage_photos_present", String(damagePresent))
 
     try {
       const res = await fetch(`${API_URL}/api/qc`, {
@@ -110,6 +116,23 @@ export default function QCPage() {
               onChange={(e) => setImagePdf(e.target.files?.[0] || null)}
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]"
             />
+          </div>
+          <div className="col-span-full">
+            <p className="mb-2 block text-xs text-[#8b949e]">Photo verification (QC person checks after opening image PDF):</p>
+            <div className="flex gap-6 mb-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={vinPresent} onChange={(e) => setVinPresent(e.target.checked)} className="h-4 w-4 rounded border-[#30363d] bg-[#0d1117] accent-[#f0883e]" />
+                <span className="text-sm text-[#c9d1d9]">VIN photo present</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={odoPresent} onChange={(e) => setOdoPresent(e.target.checked)} className="h-4 w-4 rounded border-[#30363d] bg-[#0d1117] accent-[#f0883e]" />
+                <span className="text-sm text-[#c9d1d9]">Odometer photo present</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={damagePresent} onChange={(e) => setDamagePresent(e.target.checked)} className="h-4 w-4 rounded border-[#30363d] bg-[#0d1117] accent-[#f0883e]" />
+                <span className="text-sm text-[#c9d1d9]">Damage photos present</span>
+              </label>
+            </div>
           </div>
           <div className="col-span-full flex items-center gap-3">
             <button
