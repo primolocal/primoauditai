@@ -19,6 +19,11 @@ async def lifespan(app: FastAPI):
     """App lifespan — startup and shutdown events."""
     configure_logging()
     logger.info("startup", app=settings.app_name, version=settings.app_version)
+    # Auto-create tables if they don't exist
+    from src.core.database import engine
+    from src.models.models import Base
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     yield
     logger.info("shutdown")
 
