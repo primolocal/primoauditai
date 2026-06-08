@@ -169,6 +169,15 @@ class QCPacket(Base):
     photo_damage: Mapped[int] = mapped_column(Integer, default=0)
     photo_other: Mapped[int] = mapped_column(Integer, default=0)
 
+    # Carrier confidence scoring
+    carrier_confidence_score: Mapped[int] = mapped_column(Integer, default=0)
+    carrier_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    rejection_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    auditor_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Training dataset export
+    training_dataset: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
 

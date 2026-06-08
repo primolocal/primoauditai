@@ -24,6 +24,7 @@ from src.models.models import QCFinding, QCPacket, QCPhoto
 from src.parser.pdf_estimate_parser import PDFEstimateParser
 from src.photo_extractor import extract_photos_from_pdf, save_photos_to_disk
 from src.rules.qc_rules import run_qc_rules
+from src.rules.qc_scorer import calculate_carrier_confidence, export_training_dataset
 
 router = APIRouter(prefix="/api/qc", tags=["qc"])
 
@@ -86,6 +87,14 @@ async def create_qc(
         "photo_other": photo_types.count("other") + photo_types.count("license_plate") + photo_types.count("overview"),
     }
 
+    # Calculate carrier confidence score
+    score_result = calculate_carrier_confidence(
+        qc_findings,
+        photo_counts,
+        parsed_metadata,
+    )
+
+
     # Persist to DB
     async with async_session() as db:
         packet = QCPacket(
@@ -107,6 +116,10 @@ async def create_qc(
             parsed_panels=parsed_panels,
             parsed_metadata=parsed_metadata,
             **photo_counts,
+            carrier_confidence_score=score_result.total_score,
+            carrier_ready=score_result.ready_for_carrier,
+            rejection_reasons=score_result.rejection_reasons,
+            auditor_note=score_result.auditor_note,
         )
         db.add(packet)
 
@@ -125,6 +138,33 @@ async def create_qc(
                 suggested_fix=f.get("suggested_fix"),
             )
             db.add(qcf)
+
+        # Generate training dataset
+        await db.flush()
+        
+        # Get findings back for dataset export
+        findings_res = await db.execute(select(QCFinding).filter(QCFinding.qc_packet_id == packet_id))
+        db_findings = findings_res.scalars().all()
+        
+        # Build export packet dict
+        export_pkt = {
+            "id": str(packet_id),
+            "created_at": None,
+            "parsed_lines": parsed_lines,
+            "parsed_metadata": parsed_metadata,
+            "photo_total": photo_counts["photo_total"],
+            "photo_vin": photo_counts["photo_vin"],
+            "photo_odometer": photo_counts["photo_odometer"],
+            "photo_damage": photo_counts["photo_damage"],
+        }
+        
+        dataset = export_training_dataset(
+            export_pkt,
+            qc_findings,
+            score_result,
+        )
+        
+        packet.training_dataset = dataset
 
         # Add photos
         for p in classified_photos:
@@ -155,6 +195,10 @@ async def create_qc(
         "photo_vin": photo_counts["photo_vin"],
         "photo_odometer": photo_counts["photo_odometer"],
         "photo_damage": photo_counts["photo_damage"],
+        "carrier_confidence_score": score_result.total_score,
+        "carrier_ready": score_result.ready_for_carrier,
+        "rejection_reasons": score_result.rejection_reasons,
+        "auditor_note": score_result.auditor_note,
         "findings": qc_findings,
     }
 
@@ -207,6 +251,10 @@ async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
         "photo_vin": packet.photo_vin,
         "photo_odometer": packet.photo_odometer,
         "photo_damage": packet.photo_damage,
+        "carrier_confidence_score": packet.carrier_confidence_score,
+        "carrier_ready": packet.carrier_ready,
+        "rejection_reasons": packet.rejection_reasons,
+        "auditor_note": packet.auditor_note,
         "parsed_lines": packet.parsed_lines,
         "parsed_metadata": packet.parsed_metadata,
         "findings": [
