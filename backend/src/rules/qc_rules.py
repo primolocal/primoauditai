@@ -289,7 +289,7 @@ def _check_estimate_completeness(
             )
     else:
         # Original estimate: shop info OR Shop of Choice required
-        if not shop_name and not shop_choice:
+        if not shop_name:
             findings.append(
                 QCFinding(
                     rule_id="COMPLETE_007",
@@ -297,6 +297,16 @@ def _check_estimate_completeness(
                     severity="high",
                     description="No repair facility listed — shop name or Shop of Choice required",
                     suggested_fix="Repair facility must be identified, or Shop of Choice/Owner's Choice designated",
+                )
+            )
+        elif not shop_address and not shop_choice:
+            findings.append(
+                QCFinding(
+                    rule_id="COMPLETE_007",
+                    category="completeness",
+                    severity="high",
+                    description="Repair facility listed but no address provided",
+                    suggested_fix="Repair facility address must be included on estimate",
                 )
             )
 

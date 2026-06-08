@@ -108,10 +108,14 @@ def calculate_carrier_confidence(
             auto_reject = True
             complete_fails.append("AUTO-REJECT: Shop of Choice not acceptable on supplement")
     else:
-        if not shop_name and not shop_choice:
+        if not shop_name:
             complete_score -= 25
             auto_reject = True
             complete_fails.append("AUTO-REJECT: No repair facility or Shop of Choice listed")
+        elif not shop_address and not shop_choice:
+            complete_score -= 25
+            auto_reject = True
+            complete_fails.append("AUTO-REJECT: Repair facility address missing")
     
     complete_score = max(complete_score, 0)
     score_breakdown["estimate_completeness"] = complete_score
