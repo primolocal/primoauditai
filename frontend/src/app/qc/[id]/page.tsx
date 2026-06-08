@@ -274,6 +274,12 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
                           {line.operation && <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>}
                           <span className="text-[#c9d1d9] truncate">{line.description}</span>
                         </div>
+                        <div className="mt-0.5 flex items-center gap-3 text-[10px] text-[#484f58]">
+                          {line.part_number && <span>PN: {line.part_number}</span>}
+                          {typeof line.part_price === "number" && line.part_price > 0 && <span>${line.part_price.toFixed(2)}</span>}
+                          {typeof line.labor_hours === "number" && line.labor_hours > 0 && <span>{line.labor_hours.toFixed(1)}h</span>}
+                          {typeof line.paint_hours === "number" && line.paint_hours > 0 && <span>paint: {line.paint_hours.toFixed(1)}h</span>}
+                        </div>
                       </div>
                     </div>
                   )
