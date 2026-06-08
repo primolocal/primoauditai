@@ -74,6 +74,15 @@ class PDFEstimateParser:
         panels = self._group_panels(lines)
         tax_rate = self._extract_tax_rate(doc)
 
+        # Position-based shop extraction (uses x-coordinates)
+        rf_info = self._extract_repair_facility_by_position(doc)
+        if rf_info:
+            for key in ("shop_name", "shop_address", "shop_phone"):
+                if rf_info.get(key):
+                    metadata[key] = rf_info[key]
+            if rf_info.get("shop_of_choice"):
+                metadata["shop_of_choice"] = True
+
         doc.close()
 
         metadata["estimate_tax_rate"] = tax_rate
@@ -172,49 +181,6 @@ class PDFEstimateParser:
             info["vehicle_year"] = int(m.group(1))
             info["vehicle_make"] = m.group(2).strip()
             info["vehicle_model"] = m.group(3).strip()[:80]
-
-        # Shop info from Repair Facility section
-        rf_match = re.search(
-            r"Repair Facility:\s*\n(.+?)(?:\n(?:Inspection Location|Owner:|VEHICLE\s*\n|Repair Facility\s*\n|$))",
-            text,
-            re.DOTALL,
-        )
-        if rf_match:
-            rf_text = rf_match.group(1).strip()
-            rf_lines = [ln.strip() for ln in rf_text.split("\n") if ln.strip()]
-            deduped = []
-            for ln in rf_lines:
-                if not deduped or ln != deduped[-1]:
-                    deduped.append(ln)
-
-            shop_name = ""
-            shop_addr_parts = []
-            shop_of_choice = False
-
-            # Check for Shop of Choice / Owner's Choice designation
-            rf_text_lower = rf_text.lower()
-            if any(kw in rf_text_lower for kw in ["owner's choice", "owners choice", "owner choice", "shop of choice"]):
-                shop_of_choice = True
-
-            for i, line in enumerate(deduped):
-                if any(kw in line.upper() for kw in ["BODY SHOP", "AUTO", "REPAIR", "COLLISION", "PDR", "SMART", "MOTORS", "GARAGE", "MAACO"]):
-                    shop_name = line
-                    shop_addr_parts = [ln for ln in deduped[i + 1 :] if not re.match(r"^\(?\d{3}\)?", ln)][:3]
-                    break
-            if not shop_name and len(deduped) >= 2:
-                shop_name = deduped[1] if len(deduped) > 1 else deduped[0]
-                shop_addr_parts = deduped[2:5] if len(deduped) > 2 else []
-
-            if shop_name:
-                info["shop_name"] = shop_name[:50]
-                info["shop_address"] = " ".join(shop_addr_parts)[:80] if shop_addr_parts else ""
-
-            if shop_of_choice:
-                info["shop_of_choice"] = True
-
-            phone_m = re.search(r"\(?\d{3}\)?\s*\d{3}[-.]?\d{4}", rf_text)
-            if phone_m:
-                info["shop_phone"] = phone_m.group(0)
 
         return info
 
@@ -535,6 +501,72 @@ class PDFEstimateParser:
 
 
 # --- Photo extraction ---
+    def _extract_repair_facility_by_position(self, doc) -> dict[str, Any] | None:
+        """Extract shop info from Repair Facility column using x-coordinates."""
+        if not doc.page_count:
+            return None
+        page = doc[0]
+        blocks = page.get_text("dict")["blocks"]
+        rf_x = None
+        rf_y = None
+        for block in blocks:
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        if span["text"].strip() == "Repair Facility:":
+                            rf_x = span["bbox"][0]
+                            rf_y = span["bbox"][3]
+                            break
+                    if rf_x is not None:
+                        break
+                if rf_x is not None:
+                    break
+        if rf_x is None:
+            return None
+        rf_lines = []
+        for block in blocks:
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        sx = span["bbox"][0]
+                        sy = span["bbox"][1]
+                        text = span["text"].strip()
+                        if not text:
+                            continue
+                        if abs(sx - rf_x) < 80 and sy > rf_y:
+                            rf_lines.append((sy, text))
+        if not rf_lines:
+            return None
+        rf_lines.sort(key=lambda x: x[0])
+        result = {}
+        texts = []
+        seen = set()
+        for _, t in rf_lines:
+            if t not in seen:
+                texts.append(t)
+                seen.add(t)
+        full = " ".join(texts).lower()
+        if any(kw in full for kw in ["owner's choice", "owners choice", "owner choice", "shop of choice"]):
+            result["shop_of_choice"] = True
+        shop_name = ""
+        shop_addr_lines = []
+        for t in texts:
+            if any(kw in t.upper() for kw in ["BODY SHOP", "AUTO", "REPAIR", "COLLISION", "PDR", "SMART", "MOTORS", "GARAGE", "MAACO", "OWNER", "CHOICE"]):
+                if not shop_name:
+                    shop_name = t
+            elif shop_name and not re.match(r"^\(?\d{3}\)?", t):
+                shop_addr_lines.append(t)
+        if shop_name:
+            result["shop_name"] = shop_name
+            result["shop_address"] = " ".join(shop_addr_lines[:3])
+        elif texts:
+            result["shop_name"] = texts[0]
+            result["shop_address"] = " ".join(texts[1:4])
+        for t in texts:
+            if re.search(r"\(?\d{3}\)?\s*\d{3}[-.]?\d{4}", t):
+                result["shop_phone"] = t
+                break
+        return result if result else None
 
 class PDFPhotoExtractor:
     """Extract embedded JPEG images from PDFs."""
@@ -566,3 +598,5 @@ class PDFPhotoExtractor:
 
         doc.close()
         return photos
+
+
