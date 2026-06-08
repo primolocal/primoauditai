@@ -534,7 +534,17 @@ class PDFEstimateParser:
                         if not text:
                             continue
                         if abs(sx - rf_x) < 80 and sy > rf_y:
+                            # Stop at VEHICLE section or other headers
+                            if text.upper() in ("VEHICLE", "INTERIOR COLOR:", "EXTERIOR COLOR:", 
+                                                "LICENSE:", "VIN:", "ODOMETER:", "STATE:", "CONDITION:",
+                                                "TRANSMISSION", "CONVENIENCE", "SEATS", "POWER", "WHEELS",
+                                                "PAINT", "SAFETY"):
+                                break
                             rf_lines.append((sy, text))
+        if not rf_lines:
+            return None
+        # Only take lines near the repair facility section (within ~200px of label)
+        rf_lines = [(y, t) for y, t in rf_lines if y < rf_y + 200]
         if not rf_lines:
             return None
         rf_lines.sort(key=lambda x: x[0])
