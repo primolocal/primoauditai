@@ -10,12 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  ClipboardCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/", label: "Upload", icon: Upload },
   { href: "/audits", label: "Audits", icon: List },
+  { href: "/qc", label: "QC", icon: ClipboardCheck },
   { href: "/settings", label: "Settings", icon: Settings },
 ]
 

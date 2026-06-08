@@ -12,6 +12,8 @@ function getTitle(path: string): string {
   if (path === "/") return "Upload Estimate"
   if (path === "/audits") return "Audit List"
   if (path.startsWith("/audit/")) return "Audit Detail"
+  if (path === "/qc") return "Quality Control"
+  if (path.startsWith("/qc/")) return "QC Detail"
   return "PrimoAuditAI"
 }
 
