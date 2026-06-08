@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ClipboardCheck, Clock, Upload } from "lucide-react"
+import { ClipboardCheck, Clock, Upload, Download } from "lucide-react"
 
 function api(path: string): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL + path
@@ -39,6 +39,20 @@ export default function QCPage() {
   const [damagePresent, setDamagePresent] = React.useState(false)
 
   React.useEffect(() => { loadPackets() }, [])
+
+    async function downloadDataset() {
+    try {
+      const r = await fetch(api("/api/qc/dataset/export"), { headers: { "X-API-Key": API_KEY } })
+      const data = await r.json()
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "qc_training_dataset_" + new Date().toISOString().slice(0,10) + ".json"
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch(e) {}
+  }
 
   function loadPackets() {
     setListLoading(true)
@@ -84,7 +98,13 @@ export default function QCPage() {
 
   return (
     <div className="p-6">
-      <h2 className="mb-4 text-lg font-semibold text-[#c9d1d9]">Quality Control</h2>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-[#c9d1d9]">Quality Control</h2>
+        <button onClick={downloadDataset}
+          className="inline-flex items-center gap-1 rounded border border-[#30363d] bg-[#21262d] px-3 py-1.5 text-xs text-[#8b949e] hover:bg-[#30363d] hover:text-[#c9d1d9]">
+          <Download className="h-3.5 w-3.5" /> Export Training Data
+        </button>
+      </div>
 
       <div className="mb-6 rounded-lg border border-[#21262d] bg-[#161b22] p-6">
         <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Upload QC Packet</h3>

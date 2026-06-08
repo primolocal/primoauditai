@@ -389,4 +389,14 @@ async def update_auditor_note(
         await db.commit()
 
     return {"id": packet_id, "auditor_note": body.auditor_note}
-# deploy trigger 1780934707
+
+
+@router.get("/dataset/export")
+async def export_datasets(request: Request) -> dict[str, Any]:
+    """Export all QC training datasets as downloadable JSON."""
+    async with async_session() as db:
+        result = await db.execute(select(QCPacket).where(QCPacket.training_dataset.isnot(None)))
+        packets = result.scalars().all()
+
+    datasets = [p.training_dataset for p in packets if p.training_dataset]
+    return {"datasets": datasets, "total": len(datasets)}
