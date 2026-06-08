@@ -78,7 +78,7 @@ class PDFEstimateParser:
 
         metadata["estimate_tax_rate"] = tax_rate
         metadata["document_type"] = "pdf_estimate"
-        metadata["is_supplement"] = ("supplement" in all_text[:2000].lower())
+        metadata["is_supplement"] = bool(re.search(r"(?:Supplement of Record|SUPPLEMENT)\s+\d+", all_text[:2000], re.I))
 
         # Detect supplement version from title
         if metadata["is_supplement"]:
