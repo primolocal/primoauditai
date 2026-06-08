@@ -284,6 +284,39 @@ class PDFEstimateParser:
                     fi += 1
                 description = " ".join(desc_parts)
 
+                # Extract part type from description prefix (A/M, LKQ, RECON)
+                part_type = ""
+                desc_text = " ".join(desc_parts)
+                desc_upper = desc_text.upper()
+                for prefix, pt_label in [("A/M", "A/M"), ("LKQ", "LKQ"), ("RECON", "RECON"), ("RECY", "REC"), ("USED", "USED")]:
+                    # Check if the prefix appears standalone in the description text
+                    pat = r"(?:^|\s)" + re.escape(prefix) + r"(?:\s|[-])"
+                    if re.search(pat, desc_upper):
+                        part_type = pt_label
+                        # Remove the prefix (and potentially following CAPA) from description
+                        # Find the actual occurrence and strip it + following tokens
+                        desc_remaining = []
+                        skip_next = False
+                        for i_word, w in enumerate(desc_parts):
+                            w_upper = w.upper()
+                            if w_upper == prefix or w_upper.startswith(prefix + "-"):
+                                skip_next = False
+                                if i_word + 1 < len(desc_parts) and desc_parts[i_word + 1].upper() == "CAPA":
+                                    skip_next = True
+                                continue
+                            if skip_next:
+                                skip_next = False
+                                continue
+                            desc_remaining.append(w)
+                        desc_text = " ".join(desc_remaining)
+                        break
+
+                # If description still starts with "CAPA " after stripping the type, strip that too
+                if desc_text.upper().startswith("CAPA "):
+                    desc_text = desc_text[5:].strip()
+
+                description = desc_text
+
                 # --- Determine how to interpret remaining numeric fields ---
                 part_no = ""
                 if fi < len(fields) and self._is_part_number(fields[fi]):
@@ -374,6 +407,7 @@ class PDFEstimateParser:
                     "labor_hours": labor_hours,
                     "paint_hours": paint_hours,
                     "labor_type": labor_type,
+                    "part_type": part_type,
                     "is_included_labor": is_included,
                     "total": round(total, 2),
                     "panel_name": current_panel,
