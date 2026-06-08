@@ -259,28 +259,46 @@ def _check_estimate_completeness(
             )
         )
 
-    # Shop of Choice — must be designated. Missing = reject
-    has_shop = bool(meta.get("shop_name") or meta.get("shop_address"))
-    if has_shop and not meta.get("shop_of_choice"):
-        findings.append(
-            QCFinding(
-                rule_id="COMPLETE_007",
-                category="completeness",
-                severity="high",
-                description="Shop of Choice not designated on estimate — required for carrier submission",
-                suggested_fix="Verify Shop of Choice / Owner's Choice is selected on estimate",
+    # Repair Facility rules (differs for original vs supplement)
+    shop_name = meta.get("shop_name")
+    shop_address = meta.get("shop_address")
+    shop_choice = meta.get("shop_of_choice", False)
+    is_supp = meta.get("is_supplement", False)
+
+    if is_supp:
+        # Supplements: full shop name + address required. Shop of Choice NOT acceptable
+        if not shop_name or not shop_address:
+            findings.append(
+                QCFinding(
+                    rule_id="COMPLETE_007",
+                    category="completeness",
+                    severity="high",
+                    description="Repair facility not fully listed on supplement — shop name and address required",
+                    suggested_fix="Repair facility with name and address must be listed on all supplements",
+                )
             )
-        )
-    elif not has_shop:
-        findings.append(
-            QCFinding(
-                rule_id="COMPLETE_007",
-                category="completeness",
-                severity="high",
-                description="No repair facility listed on estimate",
-                suggested_fix="Repair facility must be identified",
+        if shop_choice:
+            findings.append(
+                QCFinding(
+                    rule_id="COMPLETE_008",
+                    category="completeness",
+                    severity="medium",
+                    description="Shop of Choice not acceptable on supplement — full shop info required",
+                    suggested_fix="Replace Shop of Choice with actual repair facility name and address",
+                )
             )
-        )
+    else:
+        # Original estimate: shop info OR Shop of Choice required
+        if not shop_name and not shop_choice:
+            findings.append(
+                QCFinding(
+                    rule_id="COMPLETE_007",
+                    category="completeness",
+                    severity="high",
+                    description="No repair facility listed — shop name or Shop of Choice required",
+                    suggested_fix="Repair facility must be identified, or Shop of Choice/Owner's Choice designated",
+                )
+            )
 
     return findings
 

@@ -92,13 +92,25 @@ def calculate_carrier_confidence(
     if not metadata.get("odometer"):
         complete_score -= 2
         complete_fails.append("Odometer missing from estimate")
-    if metadata.get("shop_name") and not metadata.get("shop_of_choice"):
-        complete_score -= 25
-        auto_reject = True
-        complete_fails.append("AUTO-REJECT: Shop of Choice not designated")
-    if not metadata.get("shop_name") and not metadata.get("shop_address"):
-        complete_score -= 5
-        complete_fails.append("No repair facility listed")
+    # Repair facility (supplement-aware)
+    is_supp = metadata.get("is_supplement", False)
+    shop_name = metadata.get("shop_name")
+    shop_address = metadata.get("shop_address")
+    shop_choice = metadata.get("shop_of_choice", False)
+
+    if is_supp:
+        if not shop_name or not shop_address:
+            complete_score -= 25
+            auto_reject = True
+            complete_fails.append("AUTO-REJECT: Repair facility not fully listed on supplement")
+        if shop_choice:
+            complete_score -= 5
+            complete_fails.append("Shop of Choice not acceptable on supplement")
+    else:
+        if not shop_name and not shop_choice:
+            complete_score -= 25
+            auto_reject = True
+            complete_fails.append("AUTO-REJECT: No repair facility or Shop of Choice listed")
     
     complete_score = max(complete_score, 0)
     score_breakdown["estimate_completeness"] = complete_score
