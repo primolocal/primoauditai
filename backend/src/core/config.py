@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Security
     api_keys: str = "pa_dev_key"
-    cors_allowed_origins: str = "http://localhost:3000"
+    cors_allowed_origins: str = "http://localhost:3000,https://frontend-production-b2f6.up.railway.app"
 
     # App
     log_level: str = "INFO"
