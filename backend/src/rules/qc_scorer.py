@@ -81,13 +81,15 @@ def calculate_carrier_confidence(
     if not metadata.get("shop_address"):
         complete_score -= 5
         complete_fails.append("Shop address missing")
-    if not metadata.get("insurance_company"):
+    # Insurance — try multiple keys
+    insurance = metadata.get("insurance_company") or metadata.get("insurer") or metadata.get("carrier")
+    if not insurance:
         complete_score -= 5
         complete_fails.append("Insurance company not listed")
     if not metadata.get("license_plate"):
         complete_score -= 3
         complete_fails.append("License plate not recorded")
-    if metadata.get("odometer") is None:
+    if not metadata.get("odometer"):
         complete_score -= 2
         complete_fails.append("Odometer missing from estimate")
     
