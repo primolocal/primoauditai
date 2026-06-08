@@ -207,7 +207,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         {/* LEFT: Findings */}
         <div>
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({findings.length})</h2>
@@ -311,7 +311,7 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
         </div>
 
         {/* RIGHT: Estimate Lines */}
-        <div>
+        <div className="sticky top-14">
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
           <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
             <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
