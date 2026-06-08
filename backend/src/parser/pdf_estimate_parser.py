@@ -76,6 +76,9 @@ class PDFEstimateParser:
 
         # Position-based shop extraction (uses x-coordinates)
         rf_info = self._extract_repair_facility_by_position(doc)
+        # Fallback: if position fails, try text-based regex
+        if not rf_info:
+            rf_info = self._extract_repair_facility_fallback(all_text)
         if rf_info:
             for key in ("shop_name", "shop_address", "shop_phone"):
                 if rf_info.get(key):
@@ -506,6 +509,42 @@ class PDFEstimateParser:
 
 
 # --- Photo extraction ---
+
+    def _extract_repair_facility_fallback(self, text: str) -> dict[str, Any] | None:
+        """Fallback: text-based repair facility extraction when position fails."""
+        result = {}
+        m = re.search(r"Repair Facility:\s*\n(.+?)(?:\n(?:Inspection Location|Owner:|VEHICLE\s*\n|$))", text, re.DOTALL)
+        if not m:
+            return None
+        rf_text = m.group(1).strip()
+        if not rf_text:
+            return None
+        
+        lines = [ln.strip() for ln in rf_text.split("\n") if ln.strip()]
+        # Check for Shop of Choice
+        rf_lower = rf_text.lower()
+        if any(kw in rf_lower for kw in ["owner's choice", "owners choice", "owner choice", "shop of choice"]):
+            result["shop_of_choice"] = True
+        
+        # Find shop keywords
+        for ln in lines:
+            if any(kw in ln.upper() for kw in ["BODY SHOP", "AUTO", "REPAIR", "COLLISION", "PDR", "SMART", "MOTORS", "GARAGE", "MAACO"]):
+                result["shop_name"] = ln[:50]
+                idx = lines.index(ln)
+                addrs = [l for l in lines[idx+1:] if not re.match(r"^\(?\d{3}\)?", l)][:3]
+                result["shop_address"] = " ".join(addrs)[:80]
+                break
+        
+        if not result.get("shop_name") and lines:
+            result["shop_name"] = lines[0][:50]
+            result["shop_address"] = " ".join(lines[1:4])[:80]
+        
+        for ln in lines:
+            if re.search(r"\(?\d{3}\)?\s*\d{3}[-.]?\d{4}", ln):
+                result["shop_phone"] = ln
+                break
+        
+        return result if result else None
     def _extract_repair_facility_by_position(self, doc) -> dict[str, Any] | None:
         """Extract shop info from Repair Facility column using x-coordinates."""
         if not doc.page_count:
@@ -538,7 +577,7 @@ class PDFEstimateParser:
                         text = span["text"].strip()
                         if not text:
                             continue
-                        if abs(sx - rf_x) < 30 and sy > rf_y:
+                        if abs(sx - rf_x) < 60 and sy > rf_y:
                             # Stop completely at VEHICLE section or other headers
                             if text.upper() in ("VEHICLE", "INTERIOR COLOR:", "EXTERIOR COLOR:", 
                                                 "LICENSE:", "VIN:", "ODOMETER:", "STATE:", "CONDITION:",

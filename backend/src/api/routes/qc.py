@@ -201,7 +201,7 @@ async def create_qc(
         "photo_damage": photo_counts["photo_damage"],
         "carrier_confidence_score": score_result.total_score,
         "carrier_ready": score_result.ready_for_carrier,
-        "rejection_reasons": score_result.rejection_reasons,
+        "rejection_reasons": [r for r in score_result.rejection_reasons if "AUTO-REJECT" in r],
         "auditor_note": score_result.auditor_note,
         "findings": qc_findings,
     }
@@ -332,7 +332,7 @@ async def update_finding_status(
         packet = pkt_res.scalar_one_or_none()
 
         if packet:
-            # Build findings list for scorer
+            # Build findings list for scorer — only auto-reject + manually rejected count
             findings_list = [
                 {
                     "rule_id": f.rule_id,
@@ -342,8 +342,12 @@ async def update_finding_status(
                     "line_numbers": f.line_numbers,
                 }
                 for f in all_findings
-                if f.status != "accepted"  # accepted findings don't count toward score
+                if f.status == "rejected"  # only manually rejected count
             ]
+            # Always include auto-reject rules in the rejection reasons
+            auto_rules = {"COMPLETE_007", "COMPLETE_008"}
+            auto_findings = [f for f in all_findings if f.rule_id in auto_rules]
+            
             photo_counts = {
                 "photo_total": packet.photo_total,
                 "photo_vin": packet.photo_vin,
@@ -351,12 +355,17 @@ async def update_finding_status(
                 "photo_damage": packet.photo_damage,
             }
             score_result = calculate_carrier_confidence(
-                findings_list,
+                findings_list + [
+                    {"rule_id": f.rule_id, "category": f.category, "severity": f.severity,
+                     "description": f.description, "line_numbers": f.line_numbers}
+                    for f in auto_findings
+                ],
                 photo_counts,
                 packet.parsed_metadata or {},
             )
             packet.carrier_confidence_score = score_result.total_score
             packet.carrier_ready = score_result.ready_for_carrier
+            # Only show auto-reject or manually rejected reasons
             packet.rejection_reasons = score_result.rejection_reasons
 
         await db.commit()
