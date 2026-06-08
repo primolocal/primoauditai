@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.database import async_session
 from src.models.models import QCFinding, QCPacket, QCPhoto
 from src.parser.pdf_estimate_parser import PDFEstimateParser
-from src.photo_extractor import extract_photos_from_pdf, save_photos_to_disk
 from src.rules.qc_rules import run_qc_rules
 from src.rules.qc_scorer import calculate_carrier_confidence, export_training_dataset
 
