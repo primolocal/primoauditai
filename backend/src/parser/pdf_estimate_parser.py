@@ -140,9 +140,18 @@ class PDFEstimateParser:
             info["deductible"] = float(m.group(1).replace(",", "").replace("$", ""))
 
         # License plate — "License:\nBY 51202"
-        m = re.search(r"License:\s*\n\s*([A-Z0-9][\sA-Z0-9]{1,10})", text, re.I)
+        m = re.search(r"License:\s*\n\s*([A-Z0-9]{1,8}(?:\s[A-Z0-9]{1,6})?)", text, re.I)
         if m:
             info["license_plate"] = m.group(1).strip()
+
+        # Insurance company — "For:\nIANET, INC\nENCOMPASS INSURANCE..."
+        m = re.search(r"For:\s*\n(.+?)(?:\n(?:Supplement|Owner:|Job Number:|Written By:|Adjuster:|Insured:))", text, re.I | re.DOTALL)
+        if m:
+            raw = m.group(1).strip()
+            # Take the longest line as the insurance company name
+            names = [ln.strip() for ln in raw.split("\n") if ln.strip()]
+            if names:
+                info["insurance_company"] = max(names, key=len)
 
         # Vehicle year/make/model
         m = re.search(r"VEHICLE\s*\n(\d{4})\s+([A-Z]{3,})\s+(.+?)(?:\n|VIN)", text, re.I)
