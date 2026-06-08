@@ -95,6 +95,9 @@ def calculate_carrier_confidence(
     if metadata.get("shop_name") and not metadata.get("shop_of_choice"):
         complete_score -= 5
         complete_fails.append("Shop of Choice not designated")
+    if not metadata.get("shop_name") and not metadata.get("shop_address"):
+        complete_score -= 5
+        complete_fails.append("No repair facility listed")
     
     complete_score = max(complete_score, 0)
     score_breakdown["estimate_completeness"] = complete_score
