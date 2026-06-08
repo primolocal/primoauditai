@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, AlertTriangle, CheckCircle, HelpCircle, Ban, X } from "lucide-react"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const API_KEY = "pa_dev_key"
-
-interface ParsedLine {
+const API_KEY="pa_d...face ParsedLine {
   line_no: string
   is_header?: boolean
   panel_name?: string
@@ -23,6 +21,24 @@ interface ParsedLine {
   labor_type?: string
   flag?: string
   supplement?: string
+  part_type?: string
+}
+
+function PartTypeBadge({ part_type }: { part_type?: string }) {
+  if (!part_type) return null
+  const colors: Record<string, string> = {
+    "A/M": "bg-[#8b5cf6]/20 text-[#a78bfa] border-[#8b5cf6]/30",
+    "LKQ": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
+    "RECON": "bg-[#10b981]/20 text-[#34d399] border-[#10b981]/30",
+    "REC": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
+    "USED": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
+    "OEM": "bg-[#3b82f6]/20 text-[#60a5fa] border-[#3b82f6]/30",
+  }
+  return (
+    <span className={`rounded border px-1.5 py-0 text-[10px] font-semibold ${colors[part_type] || ""}`}>
+      {part_type}
+    </span>
+  )
 }
 
 interface AuditRun {
@@ -370,16 +386,15 @@ export default function AuditDetailPage({ params }: { params: { id: string } }) 
                           )}
                           <span className="text-[#c9d1d9] truncate">{line.description}</span>
                         </div>
-                        {(line.part_number || line.quantity || line.part_price || line.labor_hours || line.paint_hours || line.total) && (
-                          <div className="mt-0.5 flex gap-3 text-[#484f58]">
-                            {line.part_number && <span>PN: {line.part_number}</span>}
-                            {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
-                            {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
-                            {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
-                            {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
-                            {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
-                          </div>
-                        )}
+                        <div className="mt-0.5 flex items-center gap-2 flex-wrap text-[#484f58]">
+                          {line.part_type && <PartTypeBadge part_type={line.part_type} />}
+                          {line.part_number && <span>PN: {line.part_number}</span>}
+                          {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
+                          {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
+                          {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
+                          {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
+                          {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
+                        </div>
                       </div>
                     </div>
                   )
