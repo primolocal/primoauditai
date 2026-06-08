@@ -34,7 +34,7 @@ export default function AuditsPage() {
     fetch(`${API_URL}/api/audits`, { headers: { "X-API-Key": API_KEY } })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data) => {
-        setAudits(data.audits || data || [])
+        setAudits(data.items || data.audits || [])
         setLoading(false)
       })
       .catch((err) => {

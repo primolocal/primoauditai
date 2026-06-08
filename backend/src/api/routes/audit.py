@@ -22,6 +22,7 @@ from src.schemas import (
     AuditListResponse,
     AuditResponse,
     FindingResponse,
+    FindingUpdate,
 )
 
 router = APIRouter(prefix="/api/audits", tags=["audits"])
@@ -208,3 +209,50 @@ async def get_audit_findings(
     result = await db.execute(stmt)
     findings = result.scalars().all()
     return [FindingResponse.model_validate(f) for f in findings]
+
+
+@router.patch("/{audit_id}/findings/{finding_id}", response_model=FindingResponse)
+async def update_finding(
+    audit_id: uuid.UUID,
+    finding_id: uuid.UUID,
+    update: FindingUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> FindingResponse:
+    """Update a finding's status, override reason, or applies flag."""
+    stmt = select(Finding).where(
+        Finding.id == finding_id,
+        Finding.audit_run_id == audit_id,
+    )
+    result = await db.execute(stmt)
+    finding = result.scalar_one_or_none()
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+
+    if update.status is not None:
+        finding.status = update.status
+    if update.override_reason is not None:
+        finding.override_reason = update.override_reason
+    elif "override_reason" in update.model_dump(exclude_unset=True):
+        finding.override_reason = None
+    if update.applies is not None:
+        finding.applies = update.applies
+        # If auditor marks as not-applies, update audit counts
+        if not finding.applies:
+            # Recalculate counts
+            audit_stmt = select(AuditRun).where(AuditRun.id == audit_id)
+            audit_result = await db.execute(audit_stmt)
+            audit = audit_result.scalar_one()
+
+            all_findings_stmt = select(Finding).where(Finding.audit_run_id == audit_id)
+            all_result = await db.execute(all_findings_stmt)
+            all_findings = all_result.scalars().all()
+
+            active = sum(1 for f in all_findings if f.applies)
+            overridden = sum(1 for f in all_findings if not f.applies)
+            audit.findings_count = active
+            audit.passed_count = audit.passed_count + overridden
+            audit.failed_count = active
+
+    await db.commit()
+    await db.refresh(finding)
+    return FindingResponse.model_validate(finding)

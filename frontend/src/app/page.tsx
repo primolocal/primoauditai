@@ -58,7 +58,7 @@ export default function UploadPage() {
     setError("")
 
     const form = new FormData()
-    form.append("file", file)
+    form.append("estimate_pdf", file)
     Object.entries(fields).forEach(([k, v]) => {
       if (v) form.append(k, v)
     })

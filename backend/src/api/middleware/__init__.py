@@ -73,7 +73,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
-        if any(path.startswith(p) for p in self.exempt_paths):
+        # Skip API key check for OPTIONS (CORS preflight) and exempt paths
+        if request.method == "OPTIONS" or any(path.startswith(p) for p in self.exempt_paths):
             return await call_next(request)
 
         api_key = request.headers.get("X-API-Key", "")
