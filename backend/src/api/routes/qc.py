@@ -64,18 +64,22 @@ async def create_qc(
 
     # No image PDF — photos are reviewed manually by QC person
     classified_photos: list[dict[str, Any]] = []
+    packet_id = uuid.uuid4()
 
 
     # Run QC rules (returns dicts from to_dict())
     qc_findings = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
 
     # Photo counts from checkboxes (human-verified)
+    photo_v = 1 if vin_present else 0
+    photo_o = 1 if odo_present else 0
+    photo_d = 1 if damage_present else 0
     photo_counts = {
         "photo_total": len(classified_photos),
-        "photo_vin": 1 if vin_present else 0,
-        "photo_odometer": 1 if odo_present else 0,
-        "photo_damage": 1 if damage_present else 0,
-        "photo_other": len(classified_photos) - (int(vin_present) + int(odo_present) + int(damage_present)),
+        "photo_vin": photo_v,
+        "photo_odometer": photo_o,
+        "photo_damage": photo_d,
+        "photo_other": max(0, len(classified_photos) - photo_v - photo_o - photo_d),
     }
 
     # Calculate carrier confidence score
