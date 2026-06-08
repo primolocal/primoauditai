@@ -134,6 +134,16 @@ class PDFEstimateParser:
         if m:
             info["loss_date"] = m.group(1).strip()
 
+        # Deductible — "Deductible\n500.00" or "Deductible $1,000.00"
+        m = re.search(r"Deductible\s*\n\s*\$?\s*([\d,]+\.?\d{0,2})", text, re.I)
+        if m:
+            info["deductible"] = float(m.group(1).replace(",", "").replace("$", ""))
+
+        # License plate — "License:\nBY 51202"
+        m = re.search(r"License:\s*\n\s*([A-Z0-9][\sA-Z0-9]{1,10})", text, re.I)
+        if m:
+            info["license_plate"] = m.group(1).strip()
+
         # Vehicle year/make/model
         m = re.search(r"VEHICLE\s*\n(\d{4})\s+([A-Z]{3,})\s+(.+?)(?:\n|VIN)", text, re.I)
         if not m:
