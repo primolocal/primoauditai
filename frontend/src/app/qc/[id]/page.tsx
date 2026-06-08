@@ -8,7 +8,9 @@ function api(path: string): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL + path
   return path
 }
-const API_KEY="pa_d...face ParsedLine {
+const API_KEY="pa_dev_key"
+
+interface ParsedLine {
   line_no: string
   is_header?: boolean
   panel_name?: string
