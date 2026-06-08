@@ -189,6 +189,13 @@ class PDFEstimateParser:
 
             shop_name = ""
             shop_addr_parts = []
+            shop_of_choice = False
+
+            # Check for Shop of Choice / Owner's Choice designation
+            rf_text_lower = rf_text.lower()
+            if any(kw in rf_text_lower for kw in ["owner's choice", "owners choice", "owner choice", "shop of choice"]):
+                shop_of_choice = True
+
             for i, line in enumerate(deduped):
                 if any(kw in line.upper() for kw in ["BODY SHOP", "AUTO", "REPAIR", "COLLISION", "PDR", "SMART", "MOTORS", "GARAGE", "MAACO"]):
                     shop_name = line
@@ -201,6 +208,9 @@ class PDFEstimateParser:
             if shop_name:
                 info["shop_name"] = shop_name[:50]
                 info["shop_address"] = " ".join(shop_addr_parts)[:80] if shop_addr_parts else ""
+
+            if shop_of_choice:
+                info["shop_of_choice"] = True
 
             phone_m = re.search(r"\(?\d{3}\)?\s*\d{3}[-.]?\d{4}", rf_text)
             if phone_m:
