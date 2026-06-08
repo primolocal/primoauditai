@@ -276,7 +276,7 @@ def _check_estimate_completeness(
                     rule_id="COMPLETE_007",
                     category="completeness",
                     severity="high",
-                    description="Repair facility not fully listed on supplement — shop name and address required",
+                    description="Repair Facility/Shop of Choice is missing — name and address required on supplements",
                     suggested_fix="Repair facility with name and address must be listed on all supplements",
                 )
             )
@@ -298,18 +298,8 @@ def _check_estimate_completeness(
                     rule_id="COMPLETE_007",
                     category="completeness",
                     severity="high",
-                    description="No repair facility listed — shop name or Shop of Choice required",
+                    description="Repair Facility/Shop of Choice is missing",
                     suggested_fix="Repair facility must be identified, or Shop of Choice/Owner's Choice designated",
-                )
-            )
-        elif not shop_address and not shop_choice:
-            findings.append(
-                QCFinding(
-                    rule_id="COMPLETE_007",
-                    category="completeness",
-                    severity="high",
-                    description="Repair facility listed but no address provided",
-                    suggested_fix="Repair facility address must be included on estimate",
                 )
             )
 
@@ -409,19 +399,7 @@ def _check_exceptions(
             )
         )
 
-    # LKQ parts — transfer lines
-    lkq_lines = [l for l in parsed_lines if l.get("part_type") in {"LKQ", "REC", "USED"}]
-    if lkq_lines:
-        findings.append(
-            QCFinding(
-                rule_id="EXCEP_004",
-                category="exception",
-                severity="medium",
-                description=f"LKQ/Used/Recycled parts on {len(lkq_lines)} line(s) — verify transfer operations",
-                line_numbers=[int(l["line_no"]) for l in lkq_lines if l["line_no"].isdigit()],
-                suggested_fix="Verify transfer lines are present for LKQ/Used part assemblies",
-            )
-        )
+    # LKQ transfer check suppressed — audit function, not QC
 
     return findings
 def _check_rates(

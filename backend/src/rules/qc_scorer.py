@@ -111,11 +111,7 @@ def calculate_carrier_confidence(
         if not shop_name:
             complete_score -= 25
             auto_reject = True
-            complete_fails.append("AUTO-REJECT: No repair facility or Shop of Choice listed")
-        elif not shop_address and not shop_choice:
-            complete_score -= 25
-            auto_reject = True
-            complete_fails.append("AUTO-REJECT: Repair facility address missing")
+            complete_fails.append("AUTO-REJECT: Repair Facility/Shop of Choice is missing")
     
     complete_score = max(complete_score, 0)
     score_breakdown["estimate_completeness"] = complete_score
@@ -161,8 +157,8 @@ def calculate_carrier_confidence(
             exception_score -= 8
             exception_fails.append("Aftermarket parts — verify shop justification")
         elif rid == "EXCEP_004":
-            exception_score -= 5
-            exception_fails.append("LKQ/Used parts — verify transfer operations")
+            # LKQ transfer check — audit, not QC
+            pass
         else:
             exception_score -= 3
             exception_fails.append(desc)
