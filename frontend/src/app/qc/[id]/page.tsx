@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, AlertTriangle, CheckCircle, X as XIcon } from "lucide-react"
+import { ArrowLeft, AlertTriangle, CheckCircle } from "lucide-react"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 const API_KEY="pa_dev_key"
