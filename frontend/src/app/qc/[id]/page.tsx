@@ -4,7 +4,10 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, AlertTriangle, CheckCircle } from "lucide-react"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://primoauditai-production.up.railway.app"
+function api(path: string): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL + path
+  return path
+}
 const API_KEY="pa_dev_key"
 
 interface ParsedLine {
