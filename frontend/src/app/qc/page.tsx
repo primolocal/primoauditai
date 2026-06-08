@@ -31,7 +31,6 @@ export default function QCPage() {
   const [success, setSuccess] = React.useState("")
 
   const [estimatePdf, setEstimatePdf] = React.useState<File | null>(null)
-  const [imagePdf, setImagePdf] = React.useState<File | null>(null)
   const [vinPresent, setVinPresent] = React.useState(false)
   const [odoPresent, setOdoPresent] = React.useState(false)
   const [damagePresent, setDamagePresent] = React.useState(false)
@@ -42,45 +41,41 @@ export default function QCPage() {
 
   function loadPackets() {
     setListLoading(true)
-    fetch(`${API_URL}/api/qc`, { headers: { "X-API-Key": API_KEY } })
+    fetch(API_URL + "/api/qc", { headers: { "X-API-Key": API_KEY } })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data) => {
         setPackets(data.items || [])
         setListLoading(false)
       })
-      .catch((err) => {
-        setListLoading(false)
-      })
+      .catch(() => { setListLoading(false) })
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!estimatePdf || !imagePdf) return
+    if (!estimatePdf) return
     setLoading(true)
     setError("")
     setSuccess("")
 
     const form = new FormData()
     form.append("estimate_pdf", estimatePdf)
-    form.append("image_pdf", imagePdf)
     form.append("vin_photo_present", String(vinPresent))
     form.append("odometer_photo_present", String(odoPresent))
     form.append("damage_photos_present", String(damagePresent))
 
     try {
-      const res = await fetch(`${API_URL}/api/qc`, {
+      const res = await fetch(API_URL + "/api/qc", {
         method: "POST",
         headers: { "X-API-Key": API_KEY },
         body: form,
       })
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.detail || `HTTP ${res.status}`)
+        const data = await res.json().catch(() => ({} as any))
+        throw new Error(data.detail || "HTTP " + res.status)
       }
       const data = await res.json()
-      setSuccess(`QC packet created: ${data.findings_count} findings, ${data.photo_total} photos`)
+      setSuccess("QC packet created: " + data.findings_count + " findings")
       setEstimatePdf(null)
-      setImagePdf(null)
       loadPackets()
     } catch (e: any) {
       setError(e.message)
@@ -93,10 +88,9 @@ export default function QCPage() {
     <div className="p-6">
       <h2 className="mb-4 text-lg font-semibold text-[#c9d1d9]">Quality Control</h2>
 
-      {/* Upload section */}
       <div className="mb-6 rounded-lg border border-[#21262d] bg-[#161b22] p-6">
         <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Upload QC Packet</h3>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs text-[#8b949e]">Estimate PDF</label>
             <input
@@ -107,19 +101,10 @@ export default function QCPage() {
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]"
             />
           </div>
+
           <div>
-            <label className="mb-1 block text-xs text-[#8b949e]">Image Packet PDF</label>
-            <input
-              type="file"
-              accept=".pdf"
-              required
-              onChange={(e) => setImagePdf(e.target.files?.[0] || null)}
-              className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]"
-            />
-          </div>
-          <div className="col-span-full">
-            <p className="mb-2 block text-xs text-[#8b949e]">Photo verification (QC person checks after opening image PDF):</p>
-            <div className="flex gap-6 mb-2">
+            <p className="mb-2 block text-xs text-[#8b949e]">Photo verification (check image PDF manually):</p>
+            <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={vinPresent} onChange={(e) => setVinPresent(e.target.checked)} className="h-4 w-4 rounded border-[#30363d] bg-[#0d1117] accent-[#f0883e]" />
                 <span className="text-sm text-[#c9d1d9]">VIN photo present</span>
@@ -134,7 +119,8 @@ export default function QCPage() {
               </label>
             </div>
           </div>
-          <div className="col-span-full flex items-center gap-3">
+
+          <div className="flex items-center gap-3">
             <button
               type="submit"
               disabled={loading}
@@ -143,8 +129,6 @@ export default function QCPage() {
               <Upload className="h-4 w-4" />
               {loading ? "Processing..." : "Run QC Review"}
             </button>
-            {estimatePdf && <span className="text-xs text-green-400">✓ {estimatePdf.name}</span>}
-            {imagePdf && <span className="text-xs text-green-400">✓ {imagePdf.name}</span>}
           </div>
         </form>
 
@@ -152,7 +136,6 @@ export default function QCPage() {
         {success && <p className="mt-3 text-sm text-green-400">{success}</p>}
       </div>
 
-      {/* Packets list */}
       <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">QC Packets ({packets.length})</h3>
 
       {listLoading ? (
@@ -164,29 +147,23 @@ export default function QCPage() {
           {packets.map((p) => (
             <Link
               key={p.id}
-              href={`/qc/${p.id}`}
+              href={"/qc/" + p.id}
               className="flex items-center justify-between rounded-lg border border-[#21262d] bg-[#161b22] p-4 hover:border-[#30363d]"
             >
               <div className="flex items-center gap-3">
                 <ClipboardCheck className="h-5 w-5 text-[#484f58]" />
                 <div>
-                  <p className="text-sm font-medium text-[#c9d1d9]">
-                    {p.claim_number || "Untitled QC"}
-                  </p>
+                  <p className="text-sm font-medium text-[#c9d1d9]">{p.claim_number || "Untitled QC"}</p>
                   <p className="text-xs text-[#8b949e]">{p.vehicle || "Unknown vehicle"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
-                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${p.carrier_ready ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                <span className={"rounded px-2 py-0.5 text-xs font-semibold " + (p.carrier_ready ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
                   {p.carrier_confidence_score}/100
                 </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-[#8b949e]">
-                    {p.findings_count} findings
-                  </span>
-                  <span className="text-xs text-[#484f58]">| {p.photo_total} photos</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[#484f58]">
+                <div className="flex items-center gap-1.5 text-[#8b949e]">
+                  <span className="text-xs">{p.findings_count} findings</span>
+                  <span className="text-xs text-[#484f58]">|</span>
                   <Clock className="h-3.5 w-3.5" />
                   <span className="text-xs">{formatDate(p.created_at)}</span>
                 </div>

@@ -35,16 +35,6 @@ interface QCFindingData {
   suggested_fix: string | null
 }
 
-interface QCPhotoData {
-  id: string
-  filename: string
-  photo_type: string | null
-  width: number
-  height: number
-  page_num: number | null
-  thumbnail: string | null
-}
-
 interface QCPacketData {
   id: string
   claim_number: string | null
@@ -61,7 +51,6 @@ interface QCPacketData {
   auditor_note: string | null
   parsed_lines: ParsedLine[] | null
   findings: QCFindingData[]
-  photos: QCPhotoData[]
   parsed_metadata: Record<string, any> | null
 }
 
@@ -73,20 +62,6 @@ function SeverityBadge({ severity }: { severity: string }) {
     low: "bg-blue-500/20 text-blue-400",
   }
   return <span className={`rounded px-2 py-0.5 text-xs font-medium ${colors[severity] || colors.low}`}>{severity}</span>
-}
-
-function PhotoBadge({ count, label, icon: Icon }: { count: number; label: string; icon: any }) {
-  return (
-    <div className="flex items-center gap-2 rounded border border-[#21262d] bg-[#161b22] px-3 py-2">
-      <Icon className={count > 0 ? "h-4 w-4 text-green-400" : "h-4 w-4 text-red-400"} />
-      <div>
-        <p className="text-xs text-[#8b949e]">{label}</p>
-        <p className={`text-sm font-semibold ${count > 0 ? "text-green-400" : "text-red-400"}`}>
-          {count > 0 ? "Present" : "Missing"}
-        </p>
-      </div>
-    </div>
-  )
 }
 
 export default function QCDetailPage({ params }: { params: { id: string } }) {
@@ -189,9 +164,9 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
 
       {/* Photo Coverage Summary */}
       <div className="mb-6 grid grid-cols-3 gap-3">
-        <PhotoBadge count={packet.photo_vin} label="VIN Photo" icon={ClipboardCheck} />
-        <PhotoBadge count={packet.photo_odometer} label="Odometer Photo" icon={ClipboardCheck} />
-        <PhotoBadge count={packet.photo_damage} label="Damage Photos" icon={ClipboardCheck} />
+        
+        
+        
       </div>
 
       {/* Tabs */}
@@ -199,7 +174,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         {[
           { key: "findings", label: `Findings (${packet.findings_count})` },
           { key: "lines", label: `Estimate Lines (${lines.length})` },
-          { key: "photos", label: `Photos (${packet.photo_total})` },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -286,33 +260,5 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
-      {/* Photos Tab */}
-      {activeTab === "photos" && (
-        <div className="grid grid-cols-3 gap-3">
-          {packet.photos.map((p) => {
-            const typeColors: Record<string, string> = {
-              vin: "border-green-500/30 bg-green-500/10",
-              odometer: "border-green-500/30 bg-green-500/10",
-              damage: "border-orange-500/30 bg-orange-500/10",
-              other: "border-[#21262d] bg-[#161b22]",
-            }
-            return (
-              <div key={p.id} className={`rounded-lg border p-3 ${typeColors[p.photo_type || "other"] || typeColors.other}`}>
-                {p.thumbnail ? (
-                  <img src={p.thumbnail} alt={p.filename} className="mb-2 w-full rounded object-cover" style={{ maxHeight: 200 }} />
-                ) : (
-                  <div className="mb-2 flex h-32 items-center justify-center rounded bg-[#21262d] text-xs text-[#484f58]">
-                    No preview
-                  </div>
-                )}
-                <p className="text-sm font-medium text-[#c9d1d9]">{p.filename}</p>
-                <p className="text-xs text-[#8b949e]">Type: {p.photo_type || "unknown"}</p>
-                <p className="text-xs text-[#484f58]">{p.width} x {p.height}</p>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
   )
 }

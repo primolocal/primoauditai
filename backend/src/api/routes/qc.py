@@ -36,27 +36,21 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/primoauditai/qc"))
 async def create_qc(
     request: Request,
     estimate_pdf: UploadFile = File(...),
-    image_pdf: UploadFile = File(...),
     vin_photo_present: str = Form("false"),
     odometer_photo_present: str = Form("false"),
     damage_photos_present: str = Form("false"),
 ) -> dict[str, Any]:
-    """Upload estimate PDF + image PDF, run QC review, store results."""
+    """Upload estimate PDF, run QC review with manual photo verification."""
     
-    # Parse checkbox values
     vin_present = vin_photo_present.lower() == "true"
     odo_present = odometer_photo_present.lower() == "true"
     damage_present = damage_photos_present.lower() == "true"
 
-    # Validate file types
     if not estimate_pdf.filename or not estimate_pdf.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="estimate_pdf must be PDF")
-    if not image_pdf.filename or not image_pdf.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="image_pdf must be PDF")
 
-    # Read bytes
+    # Read estimate bytes
     est_bytes = await estimate_pdf.read()
-    img_bytes = await image_pdf.read()
 
     # Parse estimate
     try:
@@ -68,33 +62,9 @@ async def create_qc(
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse estimate PDF: {e}")
 
-    # Extract photos from image PDF
-    try:
-        photos_raw = extract_photos_from_pdf(img_bytes)
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Failed to extract photos: {e}")
-
-    # Save photos to disk
-    packet_id = uuid.uuid4()
-    photo_dir = UPLOAD_DIR / str(packet_id)
-    photo_dir.mkdir(parents=True, exist_ok=True)
-    saved_photos = save_photos_to_disk(photos_raw, photo_dir)
-
-    # Build photo list for QC (no auto-classification — manual review only)
+    # No image PDF — photos are reviewed manually by QC person
     classified_photos: list[dict[str, Any]] = []
-    for idx, p in enumerate(saved_photos):
-        photo_bytes = p.get("bytes", b"")
-        b64 = base64.b64encode(photo_bytes).decode() if photo_bytes else ""
-        classified_photos.append({
-            "page_num": p.get("page_num", 0),
-            "image_index": p.get("image_index", idx),
-            "file_path": p.get("file_path", ""),
-            "width": p.get("width", 0),
-            "height": p.get("height", 0),
-            "photo_type": "manual_review",
-            "photo_type_confidence": 0.0,
-            "thumbnail_b64": f"data:image/jpeg;base64,{b64}",
-        })
+
 
     # Run QC rules (items tagged as manual_review)
     qc_findings = run_qc_rules(parsed_lines, parsed_metadata, classified_photos)
