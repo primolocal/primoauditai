@@ -51,15 +51,15 @@ def calculate_carrier_confidence(
     photo_score = 25
     photo_fails: list[str] = []
     
-    if photo_counts.get("vin", 0) == 0:
+    if photo_counts.get("photo_vin", 0) == 0:
         photo_score -= 25
         auto_reject = True
         photo_fails.append("AUTO-REJECT: VIN photo missing from packet")
-    if photo_counts.get("odometer", 0) == 0:
+    if photo_counts.get("photo_odometer", 0) == 0:
         photo_score -= 25
         auto_reject = True
         photo_fails.append("AUTO-REJECT: Odometer photo missing from packet")
-    if photo_counts.get("damage", 0) == 0:
+    if photo_counts.get("photo_damage", 0) == 0:
         photo_score -= 25
         auto_reject = True
         photo_fails.append("AUTO-REJECT: Damage photos missing from packet")
