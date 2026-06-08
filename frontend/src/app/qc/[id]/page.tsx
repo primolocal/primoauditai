@@ -260,5 +260,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
+      </div>
+
   )
 }
