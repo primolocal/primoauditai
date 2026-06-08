@@ -101,6 +101,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const [noteSaving, setNoteSaving] = React.useState(false)
   const [noteSaved, setNoteSaved] = React.useState(false)
   const [findings, setFindings] = React.useState<Finding[]>([])
+  const [highlightLines, setHighlightLines] = React.useState<Set<number>>(new Set())
 
   const id = params.id
 
@@ -242,7 +243,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
                 <h3 className="mb-2 text-sm font-semibold text-[#c9d1d9]">{catLabels[cat] || cat}</h3>
                 <div className="space-y-2">
                   {catFindings.map((f) => (
-                    <div key={f.id} className="rounded-lg border border-[#21262d] bg-[#161b22] p-3">
+                    <div key={f.id} onClick={() => onFindingClick(f)} className="rounded-lg border border-[#21262d] bg-[#161b22] p-3 cursor-pointer hover:border-[#30363d]">
                       <div className="mb-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
@@ -301,7 +302,8 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
             ) : (
               lines.map((line, idx) => {
                 const isHeader = line.is_header
-                const bg = isHeader ? "bg-[#21262d] font-semibold" : "hover:bg-[#0d1117]"
+                const isHighlighted = highlightLines.has(Number(line.line_no))
+                const bg = isHeader ? "bg-[#21262d] font-semibold" : isHighlighted ? "bg-[#f0883e]/10 border-l-2 border-l-[#f0883e]" : "hover:bg-[#0d1117]"
                 if (isHeader) {
                   return (
                     <div key={idx} className={"rounded px-3 py-1.5 text-sm text-[#c9d1d9] " + bg}>
@@ -311,7 +313,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
                   )
                 }
                 return (
-                  <div key={idx} className={"flex items-start gap-3 rounded px-3 py-1.5 text-xs " + bg}>
+                  <div key={idx} className={"flex items-start gap-3 rounded px-3 py-1.5 text-xs " + bg + (isHighlighted ? " ring-1 ring-[#f0883e]/30" : "")}>
                     <span className="font-mono min-w-[2ch] text-right shrink-0 text-[#484f58]">{line.line_no}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 truncate">
