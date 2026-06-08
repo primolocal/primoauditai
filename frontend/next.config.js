@@ -13,6 +13,7 @@ const nextConfig = {
     ];
   },
   output: 'standalone',
+  distDir: '.next',
   env: { FORCE_REBUILD: "1780929012" },
 };
 
