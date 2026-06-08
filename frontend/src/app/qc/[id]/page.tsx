@@ -8,9 +8,7 @@ function api(path: string): string {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL + path
   return path
 }
-const API_KEY="pa_dev_key"
-
-interface ParsedLine {
+const API_KEY="padevkey"
   line_no: string
   is_header?: boolean
   panel_name?: string
@@ -75,15 +73,11 @@ function StatusToggle({ findingId, status, onChange }: { findingId: string; stat
     overridden: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
     rejected: "bg-red-500/20 text-red-400 border-red-500/30",
   }
-
   return (
     <div className="flex gap-1">
       {options.map((opt) => (
-        <button
-          key={opt}
-          onClick={() => onChange(findingId, opt)}
-          className={"rounded border px-2 py-0.5 text-xs font-medium transition-colors " + (status === opt ? colors[opt] : "border-[#21262d] text-[#484f58] hover:text-[#8b949e]")}
-        >
+        <button key={opt} onClick={() => onChange(findingId, opt)}
+          className={"rounded border px-2 py-0.5 text-xs font-medium transition-colors " + (status === opt ? colors[opt] : "border-[#21262d] text-[#484f58] hover:text-[#8b949e]")}>
           {labels[opt]}
         </button>
       ))}
@@ -96,7 +90,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const [packet, setPacket] = React.useState<QCPacket | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState("")
-  const [activeTab, setActiveTab] = React.useState<"findings" | "lines">("findings")
   const [auditorNote, setAuditorNote] = React.useState("")
   const [noteSaving, setNoteSaving] = React.useState(false)
   const [noteSaved, setNoteSaved] = React.useState(false)
@@ -122,9 +115,16 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
 
   React.useEffect(() => { loadPacket() }, [id])
 
+  function onFindingClick(finding: Finding) {
+    const lines = finding.line_numbers
+    if (lines && lines.length > 0) {
+      setHighlightLines(new Set(lines))
+    }
+  }
+
   function updateFindingStatus(findingId: string, newStatus: string) {
     setFindings((prev) => prev.map((f) => f.id === findingId ? { ...f, status: newStatus } : f))
-    fetch(api("/api/qc/" + id) + "/findings/" + findingId, {
+    fetch(api("/api/qc/" + id + "/findings/" + findingId), {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
       body: JSON.stringify({ status: newStatus }),
@@ -135,7 +135,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
     setNoteSaving(true)
     setNoteSaved(false)
     try {
-      const r = await fetch(api("/api/qc/" + id) + "/note", {
+      const r = await fetch(api("/api/qc/" + id + "/note"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
         body: JSON.stringify({ auditor_note: auditorNote }),
@@ -145,9 +145,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
       setTimeout(() => setNoteSaved(false), 2000)
     } catch (e) {
       setError("Failed to save note")
-    } finally {
-      setNoteSaving(false)
-    }
+    } finally { setNoteSaving(false) }
   }
 
   if (loading) return <div className="p-6 text-sm text-[#8b949e]">Loading...</div>
@@ -172,10 +170,9 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
-        <button onClick={() => router.push("/qc")} className="mb-3 flex items-center gap-1 text-sm text-[#8b949e] hover:text-[#c9d1d9]">
-          <ArrowLeft className="h-4 w-4" />
-          Back to QC
+      <div className="mb-4">
+        <button onClick={() => router.push("/qc")} className="mb-2 flex items-center gap-1 text-sm text-[#8b949e] hover:text-[#c9d1d9]">
+          <ArrowLeft className="h-4 w-4" />Back to QC
         </button>
         <h1 className="text-xl font-semibold text-[#c9d1d9]">{packet.claim_number || "Untitled QC Packet"}</h1>
         <p className="text-sm text-[#8b949e]">{packet.vehicle}</p>
@@ -204,8 +201,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
             <ul className="space-y-1">
               {packet.rejection_reasons.map((reason, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-[#c9d1d9]">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
-                  {reason}
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />{reason}
                 </li>
               ))}
             </ul>
@@ -213,123 +209,105 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="mb-4 flex gap-1 border-b border-[#21262d]">
-        {[
-          { key: "findings", label: "Findings (" + packet.findings_count + ")" },
-          { key: "lines", label: "Estimate Lines (" + lines.length + ")" },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
-            className={"px-4 py-2 text-sm transition-colors " + (activeTab === tab.key ? "border-b-2 border-[#f0883e] text-[#f0883e]" : "text-[#8b949e] hover:text-[#c9d1d9]")}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {/* Two-column layout: Findings left, Estimate Lines right */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
+        {/* LEFT: Findings */}
+        <div>
+          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({packet.findings_count})</h2>
 
-      {/* Findings Tab with toggles */}
-      {activeTab === "findings" && (
-        <div className="space-y-4">
           {packet.findings_count === 0 ? (
             <div className="flex items-center gap-2 text-green-400">
               <CheckCircle className="h-5 w-5" />
               <span className="text-sm font-semibold">No exceptions — packet passes QC</span>
             </div>
           ) : (
-            Object.entries(findingsByCat).map(([cat, catFindings]) => (
-              <div key={cat}>
-                <h3 className="mb-2 text-sm font-semibold text-[#c9d1d9]">{catLabels[cat] || cat}</h3>
-                <div className="space-y-2">
-                  {catFindings.map((f) => (
-                    <div key={f.id} onClick={() => onFindingClick(f)} className="rounded-lg border border-[#21262d] bg-[#161b22] p-3 cursor-pointer hover:border-[#30363d]">
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
-                          <SeverityBadge severity={f.severity} />
-                          {f.line_numbers?.length > 0 && (
-                            <span className="text-xs text-[#484f58]">L{f.line_numbers.join(", ")}</span>
-                          )}
+            <div className="space-y-4">
+              {Object.entries(findingsByCat).map(([cat, catFindings]) => (
+                <div key={cat}>
+                  <h3 className="mb-2 text-sm font-semibold text-[#c9d1d9]">{catLabels[cat] || cat}</h3>
+                  <div className="space-y-2">
+                    {catFindings.map((f) => (
+                      <div key={f.id} onClick={() => onFindingClick(f)}
+                        className="rounded-lg border border-[#21262d] bg-[#161b22] p-3 cursor-pointer hover:border-[#30363d]">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
+                            <SeverityBadge severity={f.severity} />
+                            {f.line_numbers?.length > 0 && (
+                              <span className="text-xs text-[#58a6ff] font-mono cursor-pointer">L{f.line_numbers.join(", ")}</span>
+                            )}
+                          </div>
+                          <StatusToggle findingId={f.id} status={f.status} onChange={updateFindingStatus} />
                         </div>
-                        <StatusToggle findingId={f.id} status={f.status} onChange={updateFindingStatus} />
+                        <p className="mb-1 text-sm text-[#c9d1d9]">{f.description}</p>
+                        {f.suggested_fix && (
+                          <p className="text-xs text-[#8b949e]">Fix: {f.suggested_fix}</p>
+                        )}
                       </div>
-                      <p className="mb-1 text-sm text-[#c9d1d9]">{f.description}</p>
-                      {f.suggested_fix && (
-                        <p className="text-xs text-[#8b949e]">Fix: {f.suggested_fix}</p>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Auditor Note + Submit */}
+              <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-6">
+                <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Submit QC Report</h3>
+                <div className="mb-3">
+                  <label className="mb-1 block text-xs text-[#8b949e]">Rejection Note / Message to Auditor</label>
+                  <textarea value={auditorNote} onChange={(e) => setAuditorNote(e.target.value)} rows={4}
+                    className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff] resize-y"
+                    placeholder="Enter rejection note or message for the auditor..." />
+                </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={saveNote} disabled={noteSaving}
+                    className="inline-flex items-center gap-2 rounded border border-[#30363d] bg-[#21262d] px-4 py-2 text-sm text-[#c9d1d9] hover:bg-[#30363d] disabled:opacity-50">
+                    {noteSaving ? "Saving..." : noteSaved ? "✓ Saved" : "Submit & Generate Report"}
+                  </button>
+                  {noteSaved && <span className="text-xs text-green-400">Report generated — copy the rejection note above</span>}
                 </div>
               </div>
-            ))
+            </div>
           )}
-
-          {/* Auditor Note + Submit */}
-          <div className="mt-6 rounded-lg border border-[#21262d] bg-[#161b22] p-6">
-            <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Submit QC Report</h3>
-            <div className="mb-3">
-              <label className="mb-1 block text-xs text-[#8b949e]">Rejection Note / Message to Auditor</label>
-              <textarea
-                value={auditorNote}
-                onChange={(e) => setAuditorNote(e.target.value)}
-                rows={4}
-                className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff] resize-y"
-                placeholder="Enter rejection note or message for the auditor..."
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={saveNote}
-                disabled={noteSaving}
-                className="inline-flex items-center gap-2 rounded border border-[#30363d] bg-[#21262d] px-4 py-2 text-sm text-[#c9d1d9] hover:bg-[#30363d] disabled:opacity-50"
-              >
-                {noteSaving ? "Saving..." : noteSaved ? "✓ Saved" : "Submit & Generate Report"}
-              </button>
-              {noteSaved && <span className="text-xs text-green-400">Report generated — copy the rejection note above</span>}
-            </div>
-          </div>
-
         </div>
-      )}
 
-      {/* Lines Tab */}
-      {activeTab === "lines" && (
-        <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
-          <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
-            {lines.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-[#8b949e]">No parsed lines.</p>
-            ) : (
-              lines.map((line, idx) => {
-                const isHeader = line.is_header
-                const isHighlighted = highlightLines.has(Number(line.line_no))
-                const bg = isHeader ? "bg-[#21262d] font-semibold" : isHighlighted ? "bg-[#f0883e]/10 border-l-2 border-l-[#f0883e]" : "hover:bg-[#0d1117]"
-                if (isHeader) {
+        {/* RIGHT: Estimate Lines */}
+        <div className="sticky top-14">
+          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
+          <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
+            <div className="space-y-0.5 max-h-[70vh] overflow-y-auto">
+              {lines.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-[#8b949e]">No parsed lines.</p>
+              ) : (
+                lines.map((line, idx) => {
+                  const isHeader = line.is_header
+                  const isHighlighted = highlightLines.has(Number(line.line_no))
+                  const bg = isHeader ? "bg-[#21262d] font-semibold" : isHighlighted ? "bg-[#f0883e]/10 border-l-2 border-l-[#f0883e]" : "hover:bg-[#0d1117]"
+                  if (isHeader) {
+                    return (
+                      <div key={idx} className={"rounded px-3 py-1.5 text-sm text-[#c9d1d9] " + bg}>
+                        <span className="text-[#8b949e] mr-2">{line.line_no}</span>
+                        {line.panel_name || line.description || ""}
+                      </div>
+                    )
+                  }
                   return (
-                    <div key={idx} className={"rounded px-3 py-1.5 text-sm text-[#c9d1d9] " + bg}>
-                      <span className="text-[#8b949e] mr-2">{line.line_no}</span>
-                      {line.panel_name || line.description || ""}
-                    </div>
-                  )
-                }
-                return (
-                  <div key={idx} className={"flex items-start gap-3 rounded px-3 py-1.5 text-xs " + bg + (isHighlighted ? " ring-1 ring-[#f0883e]/30" : "")}>
-                    <span className="font-mono min-w-[2ch] text-right shrink-0 text-[#484f58]">{line.line_no}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 truncate">
-                        {line.flag && <span className="text-[#f0883e] font-bold">{line.flag}</span>}
-                        {line.operation && <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>}
-                        <span className="text-[#c9d1d9] truncate">{line.description}</span>
+                    <div key={idx} className={"flex items-start gap-3 rounded px-3 py-1.5 text-xs " + bg + (isHighlighted ? " ring-1 ring-[#f0883e]/30" : "")}>
+                      <span className="font-mono min-w-[2ch] text-right shrink-0 text-[#484f58]">{line.line_no}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 truncate">
+                          {line.flag && <span className="text-[#f0883e] font-bold">{line.flag}</span>}
+                          {line.operation && <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>}
+                          <span className="text-[#c9d1d9] truncate">{line.description}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })
-            )}
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
-      )}
-
+      </div>
     </div>
   )
 }
