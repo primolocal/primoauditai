@@ -102,7 +102,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const id = params.id
 
   function loadPacket() {
-    fetch(API_URL + "/api/qc/" + id, { headers: { "X-API-Key": API_KEY } })
+    fetch(api("/api/qc/" + id), { headers: { "X-API-Key": API_KEY } })
       .then((r) => r.ok ? r.json() : Promise.reject(r.status))
       .then((data: QCPacket) => {
         setPacket(data)
@@ -120,7 +120,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
 
   function updateFindingStatus(findingId: string, newStatus: string) {
     setFindings((prev) => prev.map((f) => f.id === findingId ? { ...f, status: newStatus } : f))
-    fetch(API_URL + "/api/qc/" + id + "/findings/" + findingId, {
+    fetch(api("/api/qc/" + id) + "/findings/" + findingId, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
       body: JSON.stringify({ status: newStatus }),
@@ -131,7 +131,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
     setNoteSaving(true)
     setNoteSaved(false)
     try {
-      const r = await fetch(API_URL + "/api/qc/" + id + "/note", {
+      const r = await fetch(api("/api/qc/" + id) + "/note", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
         body: JSON.stringify({ auditor_note: auditorNote }),
