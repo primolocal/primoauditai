@@ -66,6 +66,9 @@ def run_qc_rules(
     # ── State Compliance ──
     findings.extend(_check_state_compliance(parsed_lines, parsed_metadata))
 
+    # ── Tax & Labor Rate Verification ──
+    findings.extend(_check_rates(parsed_lines, parsed_metadata))
+
     # ── Exception Verification (suppressed for supplements — flags/manual entries expected) ──
     if not is_supplement:
         findings.extend(_check_exceptions(parsed_lines, parsed_metadata))
@@ -421,3 +424,57 @@ def _check_exceptions(
         )
 
     return findings
+def _check_rates(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    """Verify tax rate and labor rate against reference data."""
+    findings: list[QCFinding] = []
+    
+    from src.rules.reference_data import check_tax_rate, check_labor_rate
+
+    state = meta.get("state") or meta.get("vehicle_state") or meta.get("shop_state_derived") or ""
+    zip_code = meta.get("zip_code") or meta.get("shop_zip") or ""
+
+    # ── Tax rate verification ──
+    tax_rate = meta.get("estimate_tax_rate")
+    if tax_rate is not None and state:
+        result = check_tax_rate(float(tax_rate), state, zip_code)
+        if result.get("matches") is False:
+            findings.append(
+                QCFinding(
+                    rule_id="TAX_001",
+                    category="state_compliance",
+                    severity="high",
+                    description=f"Tax rate mismatch: estimate {result['actual']:.4f}, expected {result['expected']:.4f}",
+                    suggested_fix=f"Verify correct tax rate for {state} ZIP {zip_code}. Expected: {result['expected']:.4f}",
+                )
+            )
+
+    # ── Labor rate verification ──
+    # Get the labor rate from the first mechanical labor line
+    labor_rate = None
+    for line in parsed_lines:
+        lh = line.get("labor_hours")
+        lp = line.get("part_price", 0) or 0
+        if lh and lh > 0 and lp > 0:
+            # Labor rate = part_price / labor_hours for body labor
+            # Actually, labor rate is per hour from the estimate header
+            pass
+    
+    # Use metadata labor rate if available
+    est_labor = meta.get("labor_rate") or meta.get("body_labor_rate")
+    if est_labor and state:
+        result = check_labor_rate(float(est_labor), state, zip_code)
+        if result.get("within_range") is False:
+            findings.append(
+                QCFinding(
+                    rule_id="LABOR_001",
+                    category="state_compliance",
+                    severity="high",
+                    description=f"Labor rate ${result['estimate']:.2f}/hr exceeds prevailing rate ${result['prevailing']:.2f}/hr by {result['pct_diff']:.1f}% (max 15%)",
+                    suggested_fix=f"Verify labor rate for {state} ZIP {zip_code}. Upper limit: ${result['upper_limit']:.2f}/hr",
+                )
+            )
+
+    return findings
+

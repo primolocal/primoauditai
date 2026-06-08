@@ -97,6 +97,11 @@ class PDFEstimateParser:
             else:
                 metadata["supplement_version"] = 0
 
+        # Labor rate — "Body Labor Rate: $XX.XX" or "$XX.XX/hr"
+        m = re.search(r"(?:Body\s+)?Labor\s+Rate[:\s]+\$?([\d.]+)", all_text[:3000], re.I)
+        if m:
+            metadata["labor_rate"] = float(m.group(1))
+
         # Derive state from shop ZIP if available
         shop_addr = metadata.get("shop_address", "")
         if shop_addr:
