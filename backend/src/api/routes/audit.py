@@ -126,16 +126,33 @@ async def create_audit(
             )
             db.add(p)
 
-    # Run rules engine
+    # Run unified rules engine — v1 engine + comprehensive QC ruleset
     engine = get_engine()
     raw_results = engine.run_all(ctx)
-
+    
+    # Also run the comprehensive QC ruleset (100+ rules)
+    from src.rules.qc_rules import run_qc_rules
+    qc_findings = run_qc_rules(
+        parsed_lines=parsed.lines,
+        parsed_metadata=meta,
+        photos=[],
+        vin_present=False,
+        odo_present=False,
+        damage_present=False,
+        is_supplement=meta.get("is_supplement", False),
+    )
+    
+    # Merge QC findings into the findings list
     findings_count = 0
     passed_count = 0
+    seen_rules = set()  # deduplicate by rule_id
+    
+    # V1 engine findings
     for _rule_name, results in raw_results.items():
         for r in results:
             if r.applies:
                 findings_count += 1
+                seen_rules.add(r.rule_id)
                 finding = Finding(
                     id=uuid.uuid4(),
                     audit_run_id=run.id,
@@ -151,7 +168,26 @@ async def create_audit(
                 db.add(finding)
             else:
                 passed_count += 1
-
+    
+    # QC ruleset findings (unified 100+ rules)
+    for qf in qc_findings:
+        rid = qf.get("rule_id", "")
+        if rid not in seen_rules:
+            findings_count += 1
+            seen_rules.add(rid)
+            finding = Finding(
+                id=uuid.uuid4(),
+                audit_run_id=run.id,
+                rule_id=rid,
+                category=qf.get("category", "general"),
+                severity=qf.get("severity", "medium"),
+                description=qf.get("description", ""),
+                line_numbers=qf.get("line_numbers", []),
+                confidence=qf.get("confidence", 1.0),
+                applies=True,
+            )
+            db.add(finding)
+    
     run.findings_count = findings_count
     run.passed_count = passed_count
     run.failed_count = findings_count
