@@ -108,6 +108,12 @@ def run_qc_rules(
     # ── Supplement Documentation ──
     findings.extend(_check_supplement_docs(parsed_lines, parsed_metadata))
 
+    # ── Extended Carrier Rules ──
+    findings.extend(_check_extended_rules(parsed_lines, parsed_metadata))
+
+    # ── Correlation Rules (glass/bumper/suspension/emblem/markup) ──
+    findings.extend(_check_correlation_rules(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -1285,5 +1291,170 @@ def _check_supplement_docs(
                     description=f"Wheel alignment on L{ln} — invoice required per carrier",
                     line_numbers=[ln_int],
                     suggested_fix="Attach alignment invoice"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# EXTENDED CARRIER RULES — remaining NatGen + Tommy's production rules
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_extended_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # ── NATGEN_016: Safety systems — no A/M, LKQ/OEM only ──
+    safety_kw = ["airbag", "seat belt", "seatbelt", "srs", "pretensioner", "clock spring",
+                 "impact sensor", "occupant sensor", "restraint", "adas module", "radar sensor",
+                 "camera module", "blind spot", "lane departure", "parking sensor"]
+    for line in parsed_lines:
+        desc = (line.get("description") or "").lower()
+        pt = (line.get("part_type") or "").strip().upper()
+        if pt in ("A/M", "AF") and any(kw in desc for kw in safety_kw):
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_016", category="carrier", severity="critical",
+                    description=f"Safety system part must be LKQ/OEM — A/M prohibited: {line.get('description','')}",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Replace A/M safety part with LKQ recycled or OEM. Safety systems cannot use aftermarket"))
+
+    # ── NATGEN_008: Unjustified R&I (cosmetic R&I flagging) ──
+    cosmetic_ri = ["handle", "trim", "molding", "nameplate", "emblem", "badge", "wiper",
+                   "weatherstrip", "belt molding", "run channel", "door glass"]
+    for line in parsed_lines:
+        op = (line.get("operation") or "").strip()
+        desc = (line.get("description") or "").lower()
+        if op == "R&I" and any(kw in desc for kw in cosmetic_ri):
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_008", category="carrier", severity="low",
+                    description=f"Cosmetic R&I on {line.get('description','')} — verify repair access justification per carrier",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Verify R&I is required for repair access. Cosmetic R&I has higher revision risk"))
+
+    # ── NATGEN_002: Calibration deferred to supplement ──
+    is_supp = meta.get("is_supplement", False)
+    for line in parsed_lines:
+        desc = (line.get("description") or "").lower()
+        if any(kw in desc for kw in ["calibration", "aim", "adas", "radar", "target", "sensor calibrat"]):
+            price = float(line.get("part_price") or 0) + float(line.get("misc_amount") or 0)
+            if price > 0 and not is_supp:
+                ln = line.get("line_no")
+                findings.append(
+                    QCFinding(rule_id="NATGEN_002", category="carrier", severity="high",
+                        description=f"Calibration charge on original estimate — should be deferred to supplement phase",
+                        line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                        suggested_fix="Defer calibration to supplement after scanning completed"))
+
+    # ── CHECK_001: NADA required on estimates >$5K ──
+    total = float(meta.get("total_estimate") or 0)
+    if total > 5000:
+        findings.append(
+            QCFinding(rule_id="CHECK_001", category="carrier", severity="high",
+                description=f"Estimate ${total:,.0f} — NADA Clean Retail valuation required per audit protocol",
+                suggested_fix="Attach NADA Clean Retail valuation to estimate file"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# NEW AUDIT RULES — glass, bumper, suspension, emblem, markup
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_correlation_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    year_str = str(meta.get("year") or "").strip()
+
+    # ── GLASS_001: Windshield replaced → ADAS calibration? ──
+    try:
+        veh_year = int(year_str) if year_str.isdigit() else 0
+        has_windshield_repl = any(
+            (line.get("operation") or "").strip() == "Repl" and 
+            "windshield" in (line.get("description") or "").lower()
+            for line in parsed_lines
+        )
+        has_calibration = any(
+            any(kw in (line.get("description") or "").lower() for kw in ["calibration", "aim", "adas", "camera"])
+            for line in parsed_lines
+        )
+        if veh_year >= 2018 and has_windshield_repl and not has_calibration:
+            findings.append(
+                QCFinding(rule_id="GLASS_001", category="carrier", severity="high",
+                    description=f"Windshield replaced on {veh_year} vehicle — ADAS calibration likely required (camera/sensor behind windshield)",
+                    suggested_fix="Add ADAS camera calibration if vehicle has forward-facing camera behind windshield"))
+    except (ValueError, TypeError):
+        pass
+
+    # ── BUMPER_001: Bumper cover replaced → absorber/reinforcement addressed? ──
+    has_bumper_repl = any(
+        (line.get("operation") or "").strip() == "Repl" and 
+        "bumper" in (line.get("description") or "").lower()
+        for line in parsed_lines
+    )
+    has_absorber = any(
+        any(kw in (line.get("description") or "").lower() for kw in ["absorber", "reinforcement", "impact bar"])
+        for line in parsed_lines
+    )
+    if has_bumper_repl and not has_absorber:
+        findings.append(
+            QCFinding(rule_id="BUMPER_001", category="carrier", severity="medium",
+                description="Bumper cover replaced — verify absorber/reinforcement/impact bar condition",
+                suggested_fix="Inspect and document bumper absorber and reinforcement. Add replacement if damaged"))
+
+    # ── SUSP_001: Suspension work → alignment required ──
+    has_susp = any(
+        any(kw in (line.get("description") or "").lower() for kw in 
+            ["strut", "control arm", "tie rod", "ball joint", "steering knuckle", "shock",
+             "spring", "steering rack", "steering gear", "sway bar", "trailing arm"])
+        for line in parsed_lines
+    )
+    has_align = any("align" in (line.get("description") or "").lower() for line in parsed_lines)
+    if has_susp and not has_align:
+        findings.append(
+            QCFinding(rule_id="SUSP_001", category="labor", severity="high",
+                description="Suspension component work detected — wheel alignment should be included",
+                suggested_fix="Add wheel alignment to estimate — geometry shifts with any suspension work"))
+
+    # ── EMBLEM_001: Panel replaced → emblem/nameplate R&I is included ──
+    for line in parsed_lines:
+        op = (line.get("operation") or "").strip()
+        desc = (line.get("description") or "").lower()
+        if op == "R&I" and any(kw in desc for kw in ["emblem", "nameplate", "badge"]):
+            # Check if parent panel is being replaced
+            for parent in parsed_lines:
+                p_op = (parent.get("operation") or "").strip()
+                p_desc = (parent.get("description") or "").lower()
+                if p_op == "Repl":
+                    # Check if emblem is likely on this panel
+                    panel = (parent.get("panel_name") or "").lower()
+                    for kw in ["hood", "door", "fender", "quarter", "deck", "trunk", "liftgate", "tailgate"]:
+                        if kw in panel and kw in p_desc:
+                            ln = line.get("line_no")
+                            findings.append(
+                                QCFinding(rule_id="EMBLEM_001", category="carrier", severity="low",
+                                    description=f"Emblem/nameplate R&I L{ln} may be included in panel replacement — verify",
+                                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                                    suggested_fix="Per MOTOR P-pages, emblem R&I is typically included when parent panel is replaced. Remove if duplicate."))
+                            break
+
+    # ── MARKUP_001: Part price >25% above list ──
+    for line in parsed_lines:
+        price = float(line.get("part_price") or 0)
+        if price > 500:  # Only check significant parts
+            desc = (line.get("description") or "").lower()
+            # Rough list price estimates for common panels
+            list_estimates = {"hood": 400, "door": 500, "fender": 250, "bumper": 350,
+                             "quarter": 600, "deck": 400, "headlamp": 300, "tail lamp": 200}
+            for panel, est in list_estimates.items():
+                if panel in desc and price > est * 1.25:
+                    ln = line.get("line_no")
+                    findings.append(
+                        QCFinding(rule_id="MARKUP_001", category="financial", severity="medium",
+                            description=f"Part price ${price:.0f} appears above typical range for {panel} — verify against invoice",
+                            line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                            suggested_fix="Verify part price against dealer invoice or list price. Document if verified"))
 
     return findings

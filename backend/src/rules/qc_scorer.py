@@ -239,6 +239,9 @@ def calculate_carrier_confidence(
         elif rid == "FIN_004":
             financial_score -= 3
             financial_fails.append("Sublet charges — verify invoice")
+        elif rid == "MARKUP_001":
+            financial_score -= 3
+            financial_fails.append("Part price above expected range — verify")
         else:
             financial_score -= 3
             financial_fails.append(desc)
@@ -287,6 +290,9 @@ def calculate_carrier_confidence(
         elif rid == "LABOR_003":
             labor_score -= 3
             labor_fails.append("Unitemized miscellaneous charges")
+        elif rid == "SUSP_001":
+            labor_score -= 5
+            labor_fails.append("Suspension work — alignment required")
         else:
             labor_score -= 3
             labor_fails.append(f.get("description", "Labor issue"))
@@ -347,6 +353,34 @@ def calculate_carrier_confidence(
         elif rid == "NATGEN_020":
             carrier_score -= 3
             carrier_fails.append("Haz waste exceeds carrier cap")
+        elif rid == "NATGEN_016":
+            carrier_score -= 25
+            auto_reject = True
+            carrier_fails.append("A/M safety system part — replace with LKQ/OEM")
+        elif rid == "NATGEN_008":
+            carrier_score -= 2
+            carrier_fails.append("Cosmetic R&I — verify repair access justification")
+        elif rid == "NATGEN_002":
+            carrier_score -= 8
+            carrier_fails.append("Calibration on original — defer to supplement")
+        elif rid == "CHECK_001":
+            carrier_score -= 8
+            carrier_fails.append("NADA valuation required for estimate >$5K")
+        elif rid == "GLASS_001":
+            carrier_score -= 5
+            carrier_fails.append("Windshield replaced — ADAS calibration may be required")
+        elif rid == "BUMPER_001":
+            carrier_score -= 3
+            carrier_fails.append("Bumper cover replaced — verify absorber condition")
+        elif rid == "SUSP_001":
+            carrier_score -= 5
+            carrier_fails.append("Suspension work — alignment required")
+        elif rid == "EMBLEM_001":
+            carrier_score -= 2
+            carrier_fails.append("Emblem R&I may be included in panel replacement")
+        elif rid == "MARKUP_001":
+            carrier_score -= 3
+            carrier_fails.append("Part price markup detected — verify")
         else:
             carrier_score -= 3
             carrier_fails.append(f.get("description", "Carrier compliance issue"))
