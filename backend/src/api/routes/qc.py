@@ -548,13 +548,12 @@ async def update_photo_location(
     packet_id: str,
     photo_id: str,
     body: PhotoLocationUpdate,
-    request: Request,
 ) -> dict[str, Any]:
     """Update photo damage location (manual override)."""
     new_location = (body.photo_location or "").strip()
     async with async_session() as db:
         result = await db.execute(
-            select(QCPhoto).where(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
+            select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
         )
         photo = result.scalar_one_or_none()
         if not photo:
@@ -571,12 +570,11 @@ async def update_photo_location(
 async def delete_photo(
     packet_id: str,
     photo_id: str,
-    request: Request,
 ) -> dict[str, Any]:
     """Delete a photo from the QC packet."""
     async with async_session() as db:
         result = await db.execute(
-            select(QCPhoto).where(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
+            select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
         )
         photo = result.scalar_one_or_none()
         if not photo:
