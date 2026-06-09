@@ -250,3 +250,144 @@ The Next.js frontend can be iframed into any internal portal. The sidebar naviga
 2. **Photo verification** — your QC person checks photos in their existing system, then marks checkboxes
 3. **Results** — read findings from the API response, display in your portal, or use the provided UI
 4. **Training data** — pull from `/api/qc/dataset/export` to train your own ML models
+
+
+---
+
+## Vision Model Strategy
+
+### Quick Start (Works Now)
+- **Ollama + llama3.2-vision:11b** (~8GB, free)
+- Already installed in dev environment
+- Automatic fallback: if Ollama unavailable, returns mock detection (safe in production)
+- To deploy: set `OLLAMA_HOST` env var to point to your Ollama instance
+
+```bash
+# Server setup
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull llama3.2-vision:11b
+export OLLAMA_HOST=http://your-server:11434
+```
+
+### Production Options (Future)
+
+| Option | Cost | Setup | Accuracy |
+|--------|------|-------|----------|
+| Local Ollama (GPU server) | Free (hardware) | 30 min | 70-80% |
+| OpenAI GPT-4o Vision API | Per request | 5 min | 85-90% |
+| Train CarDD/VehiDE model | One-time GPU hours | Days | 90-93% |
+
+### Dataset Recommendations
+
+| Dataset | Images | License | Best For |
+|---------|--------|---------|----------|
+| **VehiDE** (recommended) | 13,945 | Apache 2.0 | Scale — 3× CarDD, no licensing friction |
+| **CarDD** | 4,000 | CAS agreement | Fine-grained cracks/scratches |
+| **CDDM** | 4,414 pairs | Custom | Multi-view alignment (distant + close-up) |
+| **TQVCD** | 2,300 | Public | Three-quarter view classification |
+
+### Model Architecture Recommendations
+
+**YOLOv11m** — Current SOTA for car damage detection
+- mAP@50-95: 63.34%
+- Best at fine scratches and narrow cracks
+- Requires GPU for real-time inference
+
+**YOLOv8n** — Edge deployment
+- 5.9MB model size
+- Good enough for mobile/fleet deployment
+- Trades accuracy for speed
+
+**GroundingCarDD** — Zero-shot detection
+- 80% mAP @ 50
+- 64.10% combined mAP
+- Works without retraining
+
+### Deployment Architecture (Recommended)
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Frontend   │────▶│   Backend    │────▶│   Ollama     │
+│  (no GPU)    │     │  (no GPU)    │     │  (GPU server)│
+└──────────────┘     └──────────────┘     └──────────────┘
+                            │                    │
+                            ▼                    ▼
+                      ┌──────────────┐     ┌──────────────┐
+                      │PostgreSQL    │     │llama3.2-vision│
+                      │(state, docs) │     │(8GB, ~30s/photo)│
+                      └──────────────┘     └──────────────┘
+```
+
+### What Falls Back When Ollama Unavailable
+
+If `OLLAMA_HOST` is unreachable, the system **silently falls back** to `MockDamageDetector`:
+- Photos still save with `photo_type: "other"`
+- The Photos tab still displays the extracted thumbnails
+- Line matching works (heuristic-based)
+- Zero crashes — just no AI damage classification
+
+This means the QC module is **production-safe** without Ollama. Vision is an enhancement, not a requirement.
+
+---
+
+## Tech Team Deployment Checklist
+
+### Day 1: Backend
+- [ ] Clone repo: `git clone https://github.com/primolocal/primoauditai.git`
+- [ ] `cd backend && pip install -r requirements.txt`
+- [ ] Export: `DATABASE_URL`, `API_KEYS`, `UPLOAD_DIR`
+- [ ] Run: `python -m uvicorn src.api.app:app --host 0.0.0.0 --port 8080`
+- [ ] Confirm: `GET /health` returns 200
+
+### Day 2: Frontend
+- [ ] `cd frontend && npm install`
+- [ ] Create `.env.local` with `NEXT_PUBLIC_API_URL`
+- [ ] `npm run build`
+- [ ] `npx next start`
+- [ ] Verify `/qc` loads without errors
+
+### Day 3: Integration
+- [ ] Upload test estimate PDF
+- [ ] Upload image PDF (optional)
+- [ ] Check photos appear in Photos tab
+- [ ] Verify score recalculates on finding toggle
+- [ ] Submit QC report
+
+### Day 4: Vision (Optional)
+- [ ] `curl -fsSL https://ollama.com/install.sh | sh`
+- [ ] `ollama pull llama3.2-vision:11b`
+- [ ] Set `OLLAMA_HOST` in backend environment
+- [ ] Set `VISION_MODEL=llama3.2-vision:11b`
+- [ ] Upload image PDF, check labeled photos (damage, scratch, etc.)
+
+### Day 5: Scale
+- [ ] Set `ALLOWED_HOSTS` for your domain
+- [ ] Configure CORS in `src/api/middleware/`
+- [ ] Add your state ZIP codes to `reference_data.py`
+- [ ] Export training data from `/api/qc/dataset/export`
+- [ ] (Optional) Train CarDD/VehiDE model
+
+### Day 14+ Future
+- [ ] EMS ZIP parser (currently disabled) — requires `dbfread` package
+- [ ] Train custom vision model on proprietary damage photos
+- [ ] Batch upload queue for high-volume processing
+- [ ] Integrate with CCC ONE workflow
+
+---
+
+## Security Notes
+
+- API keys stored in environment, not code
+- Training datasets stored in PostgreSQL, exportable by admin only
+- Photos saved to `UPLOAD_DIR` with UUID filenames — can be wiped or archived
+- No PII from estimate PDF stored in model training data
+
+---
+
+## Support
+
+For bugs, questions, or feature requests on this handoff:
+1. Check `backend/src/api/routes/` for endpoint source
+2. Check `frontend/src/app/qc/` for UI source
+3. Reference data in `backend/src/rules/reference_data.py`
+4. Parser logic in `backend/src/parser/pdf_estimate_parser.py`
