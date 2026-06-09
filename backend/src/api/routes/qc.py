@@ -237,37 +237,47 @@ async def create_qc(
         dataset = export_training_dataset(export_pkt, qc_findings, score_result)
         packet.training_dataset = dataset
 
-        # Add photos
-        for p in classified_photos:
+        # Add photos with disk storage for GET retrieval
+        photo_dir = UPLOAD_DIR / str(packet_id)
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        import base64 as _b64
+        
+        for i, p in enumerate(classified_photos):
+            # Save photo to disk
+            fname = f"photo_{i+1:03d}.jpg"
+            fpath = photo_dir / fname
+            raw = _b64.b64decode(p.get("thumbnail_b64", "").replace("data:image/jpeg;base64,", ""))
+            with open(fpath, "wb") as f:
+                f.write(raw)
+            
             db.add(QCPhoto(
                 id=uuid.uuid4(),
                 qc_packet_id=packet_id,
                 page_num=p.get("page_num", 0),
                 image_index=p.get("image_index", 0),
-                filename=f"photo_p{p.get('page_num',0)}_i{p.get('image_index',0)}.jpg",
-                file_path="",
+                filename=fname,
+                file_path=str(fpath),
                 width=p.get("width", 0),
                 height=p.get("height", 0),
-                file_size=0,
+                file_size=len(raw),
                 photo_type=p.get("photo_type"),
                 photo_type_confidence=0.8,
             ))
         
-        await db.flush()
-        
-        # Build photo response with thumbnails
-        photo_items_out = []
-        for i, p in enumerate(classified_photos):
-            photo_items_out.append({
+        # Build photo response for POST return
+        photo_items_out = [
+            {
                 "id": str(uuid.uuid4()),
-                "filename": f"photo_p{p.get('page_num',0)}_i{p.get('image_index',i+1)}.jpg",
+                "filename": f"photo_{idx+1:03d}.jpg",
                 "photo_type": p.get("photo_type"),
                 "width": p.get("width", 0),
                 "height": p.get("height", 0),
                 "page_num": p.get("page_num", 0),
                 "matched_lines": p.get("matched_lines", []),
-                "thumbnail": p.get("thumbnail_b64", None),
-            })
+                "thumbnail": p.get("thumbnail_b64"),
+            }
+            for idx, p in enumerate(classified_photos)
+        ]
         await db.commit()
 
     return {
