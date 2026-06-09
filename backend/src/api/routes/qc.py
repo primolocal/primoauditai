@@ -344,9 +344,9 @@ async def update_finding_status(
                 for f in all_findings
                 if f.status == "rejected"  # only manually rejected count
             ]
-            # Always include auto-reject rules in the rejection reasons
-            auto_rules = {"COMPLETE_007", "COMPLETE_008"}
-            auto_findings = [f for f in all_findings if f.rule_id in auto_rules]
+            # Always include auto-reject rules unless accepted
+            auto_rules = {"COMPLETE_007", "COMPLETE_008", "PHOTOCOV_001", "PHOTOCOV_002", "PHOTOCOV_003"}
+            auto_findings = [f for f in all_findings if f.rule_id in auto_rules and f.status != "accepted"]
             
             photo_counts = {
                 "photo_total": packet.photo_total,
