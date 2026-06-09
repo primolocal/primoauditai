@@ -155,30 +155,29 @@ async def create_qc(
             img_bytes = await image_pdf.read()
             raw_photos = extract_photos_from_pdf(img_bytes)
             
+            matched_panels = set()  # Track which estimate panels have been matched
             for idx, rp in enumerate(raw_photos):
                 b64_data = _b64.b64encode(rp["bytes"]).decode() if rp.get("bytes") else ""
                 w, h = rp.get("width", 0), rp.get("height", 0)
                 
-                # Use real vision model (Gemini → Ollama → Mock fallback)
+                # Use vision model for BINARY damage check only (auditor classifies type/location)
                 vision_result = vision.analyze(rp.get("bytes", b""), filename=f"photo_{idx}.jpg")
-                ptype = vision_result.get("type", "damage") if vision_result.get("damage") else "other"
+                has_damage = vision_result.get("damage", False)
                 confidence = round(vision_result.get("confidence", 0.5), 2)
-                location = vision_result.get("location", "unknown")
-                severity = vision_result.get("severity") or "moderate"
-                repair = vision_result.get("repair") or vision_result.get("repair_suggestion") or "repair"
-                location_detail = vision_result.get("location_detail", "")
                 
-                # Save full vision result including part identification & severity
-                full_vision = {
-                    "damage": vision_result.get("damage", True),
-                    "type": ptype,
-                    "confidence": confidence,
-                    "location": location,
-                    "severity": severity,
-                    "repair": repair,
-                    "location_detail": location_detail,
-                    "detections": vision_result.get("detections", []),
-                }
+                # Derive location from estimate lines (panel names), not from Gemini
+                # Match by page order: photos appear in PDF order, match to estimate panels
+                location = "needs_review"
+                ptype = "needs_review"  # Auditor classifies via dropdown
+                
+                # Try to match to an estimate panel by keyword
+                for line in parsed_lines:
+                    panel = (line.get("panel_name") or "").strip().lower()
+                    op = (line.get("operation") or "").strip()
+                    if panel and op in ("Repl", "Rpr", "R&I") and panel not in matched_panels:
+                        matched_panels.add(panel)
+                        location = panel
+                        break
                 
                 # Match to estimate line using vision-detected location + panel keywords
                 matched_lines: list[int] = []
@@ -204,9 +203,9 @@ async def create_qc(
                     "photo_type": ptype,
                     "photo_location": location,
                     "confidence": confidence,
-                    "severity": severity,
-                    "repair": repair,
-                    "location_detail": location_detail,
+                    "severity": "needs_review",
+                    "repair": "needs_review",
+                    "location_detail": "",
                     "matched_lines": matched_lines[:3] or matched_lines[:3] if matched_lines else [],
                     "thumbnail_b64": f"data:image/jpeg;base64,{b64_data}",
                 })
@@ -344,7 +343,7 @@ async def create_qc(
                 photo_type=p.get("photo_type"),
                 photo_type_confidence=p.get("confidence", 0.0),
                 vision_result={
-                    "damage": p.get("photo_type") in ("damage", "dent", "scratch", "crack", "rust", "glass", "tire", "corrosion"),
+                    "damage": p.get("photo_type") not in ("other", "needs_review"),
                     "type": p.get("photo_type"),
                     "confidence": p.get("confidence", 0.0),
                     "location": p.get("photo_location", "unknown"),

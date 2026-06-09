@@ -141,25 +141,27 @@ class GeminiVisionDetector(BaseDamageDetector):
         if result is None:
             return MockDamageDetector().analyze(image_bytes, filename)
 
-        damage_type = result.get("damage_type") or result.get("type") or "other"
-        severity = result.get("severity") or "moderate"
-        repair = "repair" if result.get("damage") else "no action"
+        has_damage = result.get("damage", False)
+        conf = result.get("confidence", 0.5)
 
         return {
-            "damage": result.get("damage", True),
-            "type": damage_type,
-            "location": filename,  # Part ID comes from estimate, not Gemini
+            "damage": has_damage,
+            "type": "needs_review",  # Auditor classifies
+            "location": filename,
             "location_detail": "",
-            "severity": severity,
-            "repair": repair,
-            "confidence": result.get("confidence", 0.5),
+            "severity": "needs_review",
+            "repair": "needs_review",
+            "confidence": conf,
             "detections": [{
-                "category": damage_type,
-                "confidence": result.get("confidence", 0.5),
+                "category": "needs_review",
+                "confidence": conf,
                 "location": filename,
-                "severity": severity,
-                "repair": repair,
+                "severity": "needs_review",
+                "repair": "needs_review",
             }],
+            "needs_human_review": True,
+            "ai_says_damage": has_damage,
+            "ai_confidence": conf,
         }
 
 
