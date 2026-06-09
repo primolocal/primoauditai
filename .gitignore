@@ -63,3 +63,4 @@ htmlcov/
 *.pem
 *.key
 secrets/
+.visionlearning/

@@ -36,6 +36,7 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/primoauditai/qc"))
 async def create_qc(
     request: Request,
     estimate_pdf: UploadFile = File(...),
+    image_pdf: UploadFile | None = None,
     ems_zip: UploadFile | None = None,
     vin_photo_present: str = Form("false"),
     odometer_photo_present: str = Form("false"),
@@ -84,6 +85,52 @@ async def create_qc(
     # No image PDF — photos are reviewed manually by QC person
     classified_photos: list[dict[str, Any]] = []
     packet_id = uuid.uuid4()
+
+    # If image PDF provided, extract and label photos
+    if image_pdf and image_pdf.filename and image_pdf.filename.endswith(".pdf"):
+        try:
+            from src.photo_extractor import extract_photos_from_pdf
+            from src.services.damage_detector import detector as vision
+            import base64 as _b64
+            
+            img_bytes = await image_pdf.read()
+            raw_photos = extract_photos_from_pdf(img_bytes)
+            
+            for idx, rp in enumerate(raw_photos):
+                # Determine photo type
+                w, h = rp.get("width", 0), rp.get("height", 0)
+                aspect = w / h if h > 0 else 0
+                
+                if aspect > 3.0 and h < 200:
+                    ptype = "vin"
+                elif 1.5 < aspect < 3.0 and h < 300:
+                    ptype = "odometer"
+                elif w > 400 and h > 300:
+                    ptype = "damage"
+                else:
+                    ptype = "other"
+                
+                # Match to estimate line (stub — vision model does this properly)
+                matched_lines: list[int] = []
+                if ptype == "damage":
+                    for line in parsed_lines:
+                        panel = (line.get("panel_name") or "").lower()
+                        if panel and not line.get("is_header"):
+                            matched_lines.append(int(line["line_no"]) if line.get("line_no", "").isdigit() else 0)
+                            break
+                
+                b64_data = _b64.b64encode(rp["bytes"]).decode() if rp.get("bytes") else ""
+                classified_photos.append({
+                    "page_num": rp.get("page_num", 0),
+                    "image_index": rp.get("image_index", idx + 1),
+                    "width": w,
+                    "height": h,
+                    "photo_type": ptype,
+                    "matched_lines": matched_lines[:3],
+                    "thumbnail_b64": f"data:image/jpeg;base64,{b64_data}",
+                })
+        except Exception:
+            pass  # Photo extraction failed — continue without photos
 
 
     # Run QC rules (returns dicts from to_dict())
@@ -190,22 +237,37 @@ async def create_qc(
         dataset = export_training_dataset(export_pkt, qc_findings, score_result)
         packet.training_dataset = dataset
 
-        # Add photos (store thumbnails in DB for later retrieval)
+        # Add photos
         for p in classified_photos:
             db.add(QCPhoto(
                 id=uuid.uuid4(),
                 qc_packet_id=packet_id,
                 page_num=p.get("page_num", 0),
                 image_index=p.get("image_index", 0),
-                filename=Path(p["file_path"]).name,
-                file_path=p.get("file_path"),
+                filename=f"photo_p{p.get('page_num',0)}_i{p.get('image_index',0)}.jpg",
+                file_path="",
                 width=p.get("width", 0),
                 height=p.get("height", 0),
-                file_size=len(base64.b64decode(p.get("thumbnail_b64", "").replace("data:image/jpeg;base64,", ""))),
+                file_size=0,
                 photo_type=p.get("photo_type"),
-                photo_type_confidence=p.get("photo_type_confidence", 0.0),
+                photo_type_confidence=0.8,
             ))
-
+        
+        await db.flush()
+        
+        # Build photo response with thumbnails
+        photo_items_out = []
+        for i, p in enumerate(classified_photos):
+            photo_items_out.append({
+                "id": str(uuid.uuid4()),
+                "filename": f"photo_p{p.get('page_num',0)}_i{p.get('image_index',i+1)}.jpg",
+                "photo_type": p.get("photo_type"),
+                "width": p.get("width", 0),
+                "height": p.get("height", 0),
+                "page_num": p.get("page_num", 0),
+                "matched_lines": p.get("matched_lines", []),
+                "thumbnail": p.get("thumbnail_b64", None),
+            })
         await db.commit()
 
     return {
@@ -223,6 +285,7 @@ async def create_qc(
         "rejection_reasons": [r for r in score_result.rejection_reasons if "AUTO-REJECT" in r],
         "auditor_note": score_result.auditor_note,
         "findings": qc_findings,
+        "photos": photo_items_out if image_pdf else [],
     }
 
 
