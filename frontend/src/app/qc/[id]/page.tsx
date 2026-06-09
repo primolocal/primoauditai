@@ -376,66 +376,115 @@ export default function QCDetailPage() {
                     other: "bg-gray-500/20 text-gray-400 border-gray-500/30",
                   }
                   return (
-                    <div key={p.id} className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
-                      {p.thumbnail ? (
-                        <img src={p.thumbnail} alt={p.filename} className="mb-2 w-full rounded object-cover" style={{ maxHeight: 200 }} />
-                      ) : (
-                        <div className="mb-2 flex h-32 items-center justify-center rounded bg-[#21262d] text-xs text-[#484f58]">No preview</div>
-                      )}
-                      {/* AI Analysis Info */}
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className={"rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide " + (typeBadge[p.photo_type || "other"] || typeBadge.other)}>
-                          {p.photo_type || "other"}
-                        </span>
-                        {p.confidence != null && (
-                          <div className="flex items-center gap-1">
-                            <div className="h-1.5 w-16 rounded-full bg-[#21262d] overflow-hidden">
-                              <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.round(p.confidence * 100)}%` }} />
+                    <div key={p.id} className="group relative overflow-hidden rounded-xl border border-[#30363d] bg-[#161b22] shadow-lg transition-all hover:border-[#484f58] hover:shadow-xl"
+                    <div key={p.id} className="group relative overflow-hidden rounded-xl border border-[#30363d] bg-[#161b22] shadow-lg transition-all hover:border-[#484f58] hover:shadow-xl">
+                      {/* ── Thumbnail ── */}
+                      <div className="relative aspect-square overflow-hidden bg-[#0d1117]">
+                        {p.thumbnail ? (
+                          <a href={p.thumbnail} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
+                            <img src={p.thumbnail} alt={p.filename} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            {/* Zoom hint on hover */}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/30">
+                              <span className="opacity-0 transition-opacity group-hover:opacity-100 text-[10px] font-medium text-white bg-black/60 px-2 py-1 rounded-full">🔍 Click to enlarge</span>
                             </div>
-                            <span className="text-[10px] text-[#8b949e]">{Math.round(p.confidence * 100)}%</span>
+                          </a>
+                        ) : (
+                          <div className="flex h-full items-center justify-center">
+                            <span className="text-xs text-[#484f58]">No preview</span>
                           </div>
                         )}
+                        {/* Top-right: image dimensions */}
+                        <div className="absolute top-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-[#8b949e] backdrop-blur">
+                          {p.width}×{p.height}
+                        </div>
                       </div>
-                      {p.photo_location && (
-                        <div className="mb-1.5 text-[10px] text-[#8b949e]">📍 {p.photo_location}</div>
-                      )}
-                      {/* Controls */}
-                      <div className="flex items-center justify-between gap-1 border-t border-[#21262d] pt-1.5">
-                        <select
-                          value={p.photo_type || "other"}
-                          onChange={async (e) => {
-                            const newType = e.target.value
-                            await fetch(`${API_URL}/api/qc/` + id + `/photos/` + p.id + `/type`, {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
-                              body: JSON.stringify({ photo_type: newType }),
-                            })
-                            await load()
-                          }}
-                          className="w-full rounded border border-[#30363d] bg-[#0d1117] px-1 py-0.5 text-[10px] text-[#c9d1d9]"
-                        >
-                          {[
-                            { value: "other", label: "Other" },
-                            { value: "vin", label: "VIN" },
-                            { value: "odometer", label: "Odometer" },
-                            { value: "damage", label: "Damage" },
-                            { value: "dent", label: "Dent" },
-                            { value: "scratch", label: "Scratch" },
-                            { value: "crack", label: "Crack" },
-                            { value: "rust", label: "Rust/Corrosion" },
-                            { value: "glass", label: "Glass" },
-                            { value: "tire", label: "Tire" },
-                          ].map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
+
+                      {/* ── Body ── */}
+                      <div className="p-2.5 space-y-2">
+                        {/* Row 1: Badge + Confidence */}
+                        <div className="flex items-center gap-2">
+                          <span className={"shrink-0 truncate rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider " + (typeBadge[p.photo_type || "other"] || typeBadge.other)}>
+                            {p.photo_type || "other"}
+                          </span>
+                          {p.confidence != null && (
+                            <div className="flex flex-1 items-center gap-1.5">
+                              <div className="h-2 flex-1 rounded-full bg-[#21262d] overflow-hidden">
+                                <div
+                                  className={"h-full rounded-full transition-all " + (p.confidence >= 0.85 ? "bg-green-500" : p.confidence >= 0.6 ? "bg-yellow-500" : "bg-red-500")}
+                                  style={{ width: `${Math.round(p.confidence * 100)}%` }}
+                                />
+                              </div>
+                              <span className="shrink-0 text-[10px] font-mono text-[#8b949e]">{Math.round(p.confidence * 100)}%</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Row 2: Location */}
+                        {p.photo_location && p.photo_location !== "unknown" && (
+                          <div className="flex items-center gap-1 text-[10px] text-[#8b949e]">
+                            <span>📍</span>
+                            <span className="capitalize">{p.photo_location}</span>
+                          </div>
+                        )}
+
+                        {/* Row 3: Matched Lines — prominent when present */}
+                        {p.matched_lines && p.matched_lines.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            <span className="text-[9px] uppercase tracking-wide text-[#484f58]">Lines:</span>
+                            {p.matched_lines.map((ln) => (
+                              <span key={ln} className="rounded bg-[#1f6feb]/20 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[#58a6ff]">
+                                #{ln}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* ── Divider ── */}
+                        <div className="border-t border-[#21262d]" />
+
+                        {/* ── Controls ── */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] uppercase tracking-wider text-[#484f58]">Override Type</label>
+                          <select
+                            value={p.photo_type || "other"}
+                            onChange={async (e) => {
+                              const newType = e.target.value
+                              await fetch(`${API_URL}/api/qc/` + id + `/photos/` + p.id + `/type`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+                                body: JSON.stringify({ photo_type: newType }),
+                              })
+                              await load()
+                            }}
+                            className="w-full rounded-lg border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-[#c9d1d9] outline-none focus:border-[#58a6ff]"
+                          >
+                            {[
+                              { value: "other", label: "🔄 Other / Unsure" },
+                              { value: "vin", label: "🔢 VIN Plate" },
+                              { value: "odometer", label: "🚘 Odometer" },
+                              { value: "damage", label: "⚠️ Damage (General)" },
+                              { value: "dent", label: "🔨 Dent" },
+                              { value: "scratch", label: "🖊️ Scratch" },
+                              { value: "crack", label: "💔 Crack / Break" },
+                              { value: "rust", label: "🟤 Rust / Corrosion" },
+                              { value: "glass", label: "🪟 Glass / Mirror" },
+                              { value: "tire", label: "🛞 Tire / Wheel" },
+                            ].map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* ── Footer meta ── */}
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span className="text-[9px] text-[#484f58]">Page {p.page_num}</span>
+                          {p.image_index && (
+                            <span className="text-[9px] text-[#484f58]">#{p.image_index}</span>
+                          )}
+                        </div>
                       </div>
-                      {p.matched_lines && p.matched_lines.length > 0 && (
-                        <div className="mt-1 text-[10px] text-[#58a6ff] font-mono">Lines: {p.matched_lines.join(", ")}</div>
-                      )}
                     </div>
                   )
-                })}
               </div>
             ) : (
               <p className="text-sm text-[#8b949e]">No photos extracted. Upload an image PDF with the estimate on the QC upload page.</p>
