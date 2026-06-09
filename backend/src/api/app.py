@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.api.middleware import add_middleware
-from src.api.routes import audit, photos, qc
+from src.api.routes import audit, photos, qc, vision
 from src.core.config import get_settings
 from src.core.logging import configure_logging, get_logger
 
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router)
     app.include_router(qc.router)
     app.include_router(photos.router)
+    app.include_router(vision.router)
 
     @app.get("/health")
     async def health_check() -> dict:
