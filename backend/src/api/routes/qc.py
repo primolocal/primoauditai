@@ -266,7 +266,14 @@ async def create_qc(
                 height=p.get("height", 0),
                 file_size=len(raw),
                 photo_type=p.get("photo_type"),
-                photo_type_confidence=0.8,
+                photo_type_confidence=p.get("confidence", 0.0),
+                vision_result={
+                    "damage": p.get("photo_type") in ("damage", "dent", "scratch", "crack", "rust", "glass", "tire"),
+                    "type": p.get("photo_type"),
+                    "confidence": p.get("confidence", 0.0),
+                    "location": p.get("photo_location", "unknown"),
+                    "matched_lines": p.get("matched_lines", []),
+                },
             ))
         
         # Build photo response for POST return
@@ -356,13 +363,18 @@ async def get_qc(packet_id: str, request: Request) -> dict[str, Any]:
                 thumb = f"data:image/jpeg;base64,{b64}"
             except Exception:
                 pass
+        # Extract vision_result fields if present
+        vision = p.vision_result or {}
         photo_items.append({
             "id": str(p.id),
             "filename": p.filename,
             "photo_type": p.photo_type,
+            "confidence": p.photo_type_confidence,
+            "photo_location": vision.get("location", "unknown"),
             "width": p.width,
             "height": p.height,
             "page_num": p.page_num,
+            "image_index": p.image_index,
             "thumbnail": thumb,
         })
 
