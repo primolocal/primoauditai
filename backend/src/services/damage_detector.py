@@ -81,31 +81,17 @@ class GeminiVisionDetector(BaseDamageDetector):
             pass  # No feedback yet — that's fine
 
     def _build_prompt(self) -> str:
-        """Build the vision prompt with optional few-shot examples from feedback."""
-        base = (
-            "You are an auto insurance damage inspector. Look at this photo and identify:\n"
-            "1. The SPECIFIC vehicle part (use these terms only: hood, front bumper, rear bumper, "
-            "right fender, left fender, right front door, left front door, right rear door, left rear door, "
-            "roof, trunk lid, liftgate, windshield, right quarter panel, left quarter panel, "
-            "grille, headlamp, tail lamp, wheel, tire, dashboard, VIN plate, odometer, license plate)\n"
-            "2. Whether there is damage\n"
-            "3. The damage type\n"
-            "4. The severity\n"
-            "5. The recommended repair action\n\n"
-            "Return EXACTLY this JSON format with NO markdown, NO explanation, NO code fences:\n"
-            '{"part":"hood","damage":true,"damage_type":"dent","location_on_vehicle":"center","severity":"moderate","repair_suggestion":"repair","confidence":0.85}\n\n'
-            "Damage types: dent, scratch, crack, rust, corrosion, tear, missing, broken, bent, none\n"
-            "Severity: minor, moderate, severe, none\n"
-            "Repair: replace, repair, pdr, no action\n"
-            "Confidence: 0.0 to 1.0\n\n"
-            "IMPORTANT: All fields required. Never use null. Use 'unknown' for part if unclear, 'moderate' for severity, 'repair' for suggestion."
+        """Simple prompt — Gemini identifies damage, not parts. Part ID comes from the estimate."""
+        return (
+            "You are inspecting an auto insurance claim photo. Answer ONLY what you see:\\n"
+            "1. Is there damage visible? (true/false)\\n"
+            "2. What TYPE of damage? (dent, scratch, crack, rust, corrosion, tear, missing, broken, bent, none)\\n"
+            "3. How SEVERE? (minor, moderate, severe, none)\\n"
+            "4. Your confidence? (0.0-1.0)\\n\\n"
+            "Return EXACTLY this JSON with NO markdown, NO explanation:\\n"
+            '{"damage":true,"damage_type":"dent","severity":"moderate","confidence":0.85}\\n\\n'
+            "IMPORTANT: Do NOT guess the vehicle part. We determine that from the estimate, not the photo."
         )
-        # Add few-shot examples from human corrections if available
-        if self.feedback_examples:
-            base += "\n\nHere are examples of correct labels from previous inspections:\n"
-            for ex in self.feedback_examples[-3:]:  # Last 3 corrections
-                base += f'Photo was "{ex.get("original_type","")}" but human corrected to "{ex.get("corrected_type","")}" because: {ex.get("reason","photo inspection")}.\n'
-        return base
 
     def _call_gemini(self, image_b64: str, prompt: str) -> dict | None:
         """Call Gemini API. Returns parsed dict or None on failure."""
@@ -149,35 +135,28 @@ class GeminiVisionDetector(BaseDamageDetector):
             return MockDamageDetector().analyze(image_bytes, filename)
 
         image_b64 = base64.b64encode(image_bytes).decode()
-
-        # Try primary prompt
         result = self._call_gemini(image_b64, self._build_prompt())
-        # If failed, retry with simpler prompt
         if result is None:
-            simple_prompt = 'Return JSON: {"part":"","damage":true,"damage_type":"","severity":"","repair_suggestion":"","confidence":0.5}'
-            result = self._call_gemini(image_b64, simple_prompt)
-        # If still failed, return mock
+            result = self._call_gemini(image_b64, 'Return JSON: {"damage":true,"damage_type":"dent","severity":"moderate","confidence":0.5}')
         if result is None:
             return MockDamageDetector().analyze(image_bytes, filename)
 
-        # Build standardized response with safe defaults
         damage_type = result.get("damage_type") or result.get("type") or "other"
-        part = result.get("part") or result.get("location") or filename.replace(".jpg","").replace("_"," ")
         severity = result.get("severity") or "moderate"
-        repair = result.get("repair_suggestion") or result.get("repair") or "repair"
+        repair = "repair" if result.get("damage") else "no action"
 
         return {
             "damage": result.get("damage", True),
             "type": damage_type,
-            "location": part,
-            "location_detail": result.get("location_on_vehicle", ""),
+            "location": filename,  # Part ID comes from estimate, not Gemini
+            "location_detail": "",
             "severity": severity,
             "repair": repair,
             "confidence": result.get("confidence", 0.5),
             "detections": [{
                 "category": damage_type,
                 "confidence": result.get("confidence", 0.5),
-                "location": part,
+                "location": filename,
                 "severity": severity,
                 "repair": repair,
             }],

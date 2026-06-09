@@ -51,13 +51,12 @@ def extract_photos_from_pdf(pdf_bytes: bytes) -> list[dict[str, Any]]:
             area = width * height
             candidates.append((area, width, height, base_image.get("ext", "jpg"), image_bytes))
         
-        # Take the single largest image per page (the actual photo, not banners)
-        if candidates:
-            candidates.sort(reverse=True, key=lambda x: x[0])
-            area, width, height, ext, image_bytes = candidates[0]
+        # Keep ALL valid photos per page, not just the largest.
+        # VIN, odometer, and damage photos often share pages — don't drop any.
+        for idx, (area, width, height, ext, image_bytes) in enumerate(candidates, start=1):
             photos.append({
                 "page_num": page_num + 1,
-                "image_index": 1,
+                "image_index": idx,
                 "width": width,
                 "height": height,
                 "format": ext,
