@@ -143,6 +143,12 @@ Return JSON: {{"damage_types": ["type"], "severity": "minor|moderate|severe", "l
     return {"results": results, "model": VISION_MODEL, "total": len(results)}
 
 
+@router.get("/status")
+async def vision_status(request: Request) -> dict[str, Any]:
+    """Diagnostic: show which vision detector is active."""
+    return get_detector_info()
+
+
 @router.get("/demo")
 async def demo_audit_vision(request: Request) -> dict[str, Any]:
     """Demonstrate the damage photo → audit cross-reference pipeline.
