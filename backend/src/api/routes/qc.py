@@ -106,8 +106,8 @@ async def create_qc(
                 ptype = vision_result.get("type", "damage") if vision_result.get("damage") else "other"
                 confidence = round(vision_result.get("confidence", 0.5), 2)
                 location = vision_result.get("location", "unknown")
-                severity = vision_result.get("severity", "moderate")
-                repair = vision_result.get("repair", "repair")
+                severity = vision_result.get("severity") or "moderate"
+                repair = vision_result.get("repair") or vision_result.get("repair_suggestion") or "repair"
                 location_detail = vision_result.get("location_detail", "")
                 
                 # Save full vision result including part identification & severity
