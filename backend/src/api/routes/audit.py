@@ -16,7 +16,8 @@ from src.core.database import get_db
 from src.engine.context import AuditContext
 from src.engine.engine import get_engine
 from src.models.models import AuditRun, Document, Finding, Photo
-from src.parser.ems_parser import EmsParser
+# EMS parser disabled for now — revert when needed
+# from src.parser.ems_parser import EmsParser
 from src.parser.pdf_estimate_parser import PDFEstimateParser, PDFPhotoExtractor
 from src.schemas import (
     AuditListResponse,
@@ -31,9 +32,8 @@ router = APIRouter(prefix="/api/audits", tags=["audits"])
 def _parse_file(content: bytes, filename: str) -> tuple[Any, str]:
     """Parse file bytes into ParsedEstimate and detect type."""
     if filename.lower().endswith(".zip"):
-        parser = EmsParser()
-        result = parser.parse(content)
-        return result, "ems_zip"
+        # EMS parser disabled — return unsupported for now
+        raise HTTPException(status_code=400, detail="EMS ZIP parsing is disabled. Upload a PDF estimate.")
     elif filename.lower().endswith(".pdf"):
         parser = PDFEstimateParser()
         result = parser.parse(content)
