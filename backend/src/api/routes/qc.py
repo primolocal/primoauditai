@@ -518,6 +518,10 @@ class PhotoTypeUpdate(BaseModel):
     photo_type: str  # vin, odometer, damage, other
 
 
+class PhotoLocationUpdate(BaseModel):
+    photo_location: str  # e.g., "right fender", "front bumper"
+
+
 @router.patch("/{packet_id}/photos/{photo_id}/type")
 async def update_photo_type(
     packet_id: str,
@@ -543,11 +547,11 @@ async def update_photo_type(
 async def update_photo_location(
     packet_id: str,
     photo_id: str,
-    body: dict[str, Any],
+    body: PhotoLocationUpdate,
     request: Request,
 ) -> dict[str, Any]:
     """Update photo damage location (manual override)."""
-    new_location = (body.get("photo_location") or "").strip()
+    new_location = (body.photo_location or "").strip()
     db = request.app.state.db
     photo = db.query(QCPhoto).filter(
         QCPhoto.id == photo_id,
