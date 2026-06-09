@@ -419,13 +419,26 @@ export default function QCDetailPage() {
                           )}
                         </div>
 
-                        {/* Row 2: Location */}
-                        {p.photo_location && p.photo_location !== "unknown" && (
-                          <div className="flex items-center gap-1 text-[10px] text-[#8b949e]">
-                            <span>📍</span>
-                            <span className="capitalize">{p.photo_location}</span>
-                          </div>
-                        )}
+                        {/* Location */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="shrink-0 text-[10px]">📍</span>
+                          <input
+                            type="text"
+                            defaultValue={p.photo_location && p.photo_location !== "unknown" ? p.photo_location : ""}
+                            placeholder="set location..."
+                            onBlur={async (e) => {
+                              const newLoc = e.target.value.trim()
+                              if (!newLoc || newLoc === p.photo_location) return
+                              await fetch(`${API_URL}/api/qc/` + id + `/photos/` + p.id + `/location`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+                                body: JSON.stringify({ photo_location: newLoc }),
+                              })
+                              await load()
+                            }}
+                            className="w-full border-b border-dashed border-[#30363d] bg-transparent py-0.5 text-[10px] text-[#8b949e] outline-none focus:border-[#58a6ff] focus:text-[#c9d1d9]"
+                          />
+                        </div>
 
                         {/* Row 3: Matched Lines — prominent when present */}
                         {p.matched_lines && p.matched_lines.length > 0 && (

@@ -538,6 +538,33 @@ async def update_photo_type(
     db.refresh(photo)
     return {"id": photo.id, "photo_type": photo.photo_type}
 
+
+@router.patch("/{packet_id}/photos/{photo_id}/location")
+async def update_photo_location(
+    packet_id: str,
+    photo_id: str,
+    request: Request,
+) -> dict[str, Any]:
+    """Update photo damage location (manual override)."""
+    body = await request.json()
+    new_location = body.get("photo_location", "").strip()
+    
+    db = request.app.state.db
+    photo = db.query(QCPhoto).filter(
+        QCPhoto.id == photo_id,
+        QCPhoto.qc_packet_id == packet_id,
+    ).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Store in vision_result JSON (no schema migration needed)
+    vision = dict(photo.vision_result) if photo.vision_result else {}
+    vision["location"] = new_location
+    photo.vision_result = vision
+    db.commit()
+    db.refresh(photo)
+    return {"id": photo.id, "photo_location": new_location}
+
 @router.get("/dataset/export")
 async def export_datasets(request: Request) -> dict[str, Any]:
     """Export all QC training datasets as downloadable JSON."""
