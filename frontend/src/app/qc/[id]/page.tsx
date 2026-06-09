@@ -84,26 +84,6 @@ function StatusToggle({ findingId, status, onChange }: { findingId: string; stat
         </button>
       ))}
     </div>
-      )}
-
-                    <div className="flex items-center justify-between">
-                      <span className={"rounded px-1.5 py-0 text-[10px] font-semibold border " + (typeBadge[p.photo_type] || typeBadge.other)}>
-                        {p.photo_type || "other"}
-                      </span>
-                      {p.matched_lines?.length > 0 && (
-                        <span className="text-[10px] text-[#58a6ff] font-mono">L{p.matched_lines.join(", ")}</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-[#8b949e]">No photos extracted. Upload an image PDF with the estimate on the QC upload page.</p>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -116,7 +96,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
   const [noteSaving, setNoteSaving] = React.useState(false)
   const [noteSaved, setNoteSaved] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState<"review" | "photos">("review")
   const [findings, setFindings] = React.useState<Finding[]>([])
   const [highlightLines, setHighlightLines] = React.useState<Set<number>>(new Set())
   const packetRef = React.useRef<QCPacket | null>(null)
@@ -246,16 +225,7 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-[#21262d]">
-        <button onClick={() => setActiveTab("review")} className={"px-4 py-2 text-sm transition-colors " + (activeTab === "review" ? "border-b-2 border-[#f0883e] text-[#f0883e]" : "text-[#8b949e] hover:text-[#c9d1d9]")}>
-          Review ({(packet as any).photos?.length || 0} photos)
-        </button>
-        <button onClick={() => setActiveTab("photos")} className={"px-4 py-2 text-sm transition-colors " + (activeTab === "photos" ? "border-b-2 border-[#f0883e] text-[#f0883e]" : "text-[#8b949e] hover:text-[#c9d1d9]")}>
-          Photos ({(packet as any).photos?.length || 0})
-        </button>
-      </div>
-
-      {activeTab === "review" && (
+      
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         <div>
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({packet.findings_count})</h2>
@@ -343,24 +313,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         </div>
       </div>
     </div>
-      )}
-
-                    <div className="flex items-center justify-between">
-                      <span className={"rounded px-1.5 py-0 text-[10px] font-semibold border " + (typeBadge[p.photo_type] || typeBadge.other)}>
-                        {p.photo_type || "other"}
-                      </span>
-                      {p.matched_lines?.length > 0 && (
-                        <span className="text-[10px] text-[#58a6ff] font-mono">L{p.matched_lines.join(", ")}</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-[#8b949e]">No photos extracted. Upload an image PDF with the estimate on the QC upload page.</p>
-          )}
-        </div>
       )}
     </div>
   )
