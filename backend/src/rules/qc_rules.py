@@ -96,6 +96,12 @@ def run_qc_rules(
     # ── Enhanced State Compliance ──
     findings.extend(_check_state_enhanced(parsed_lines, parsed_metadata))
 
+    # ── Carrier-Specific (NatGen / IAnet) ──
+    findings.extend(_check_carrier_rules(parsed_lines, parsed_metadata))
+
+    # ── Tommy's Audit Brain ──
+    findings.extend(_check_tommy_rules(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -1015,5 +1021,149 @@ def _check_state_enhanced(
                         break
         except (ValueError, TypeError):
             pass
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# CARRIER-SPECIFIC RULES (NatGen / IAnet Handbook v4)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_carrier_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # ── NATGEN_001: Scan labor > 0.5 hours ──
+    for line in parsed_lines:
+        desc = (line.get("description") or "").lower()
+        if "scan" not in desc:
+            continue
+        lh = float(line.get("labor_hours") or 0)
+        if lh > 0.5:
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_001", category="carrier", severity="high",
+                    description=f"Scan billed at {lh}h — max allowance 0.5h per carrier guidelines",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Reduce scan to 0.5 labor hours maximum"))
+
+    # ── NATGEN_004: OEM parts restriction (current MY + <15K mi) ──
+    year_str = str(meta.get("year") or "").strip()
+    odometer = str(meta.get("odometer") or "").strip()
+    try:
+        current_year = 2026
+        veh_year = int(year_str) if year_str.isdigit() else 0
+        mileage = int(odometer.replace(",", "")) if any(c.isdigit() for c in odometer) else 0
+        oem_restricted = (veh_year < current_year) or (mileage >= 15000)
+
+        if oem_restricted:
+            for line in parsed_lines:
+                pt = (line.get("part_type") or "").strip().upper()
+                if pt in ("OE", "OEM", "OES") and float(line.get("part_price") or 0) > 0:
+                    ln = line.get("line_no")
+                    findings.append(
+                        QCFinding(rule_id="NATGEN_004", category="carrier", severity="high",
+                            description=f"OEM part may not qualify — requires current MY + <15K mi (vehicle: {veh_year}, {mileage:,} mi)",
+                            line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                            suggested_fix="Replace with LKQ recycled, reman, or A/M per NatGen parts hierarchy"))
+                    break
+    except (ValueError, TypeError):
+        pass
+
+    # ── NATGEN_006: Unjustified Replace on common panels ──
+    high_risk = ["bumper", "fender", "door skin", "outer panel"]
+    for line in parsed_lines:
+        op = (line.get("operation") or "").strip()
+        desc = (line.get("description") or "").lower()
+        if op != "Repl":
+            continue
+        if any(kw in desc for kw in high_risk):
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_006", category="carrier", severity="medium",
+                    description=f"Replace on {line.get('description','')} — default to repair per carrier guidelines",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Verify photos show severe damage. If repairable, change to repair operation"))
+
+    # ── NATGEN_007: Unnecessary blend ──
+    for line in parsed_lines:
+        op = (line.get("operation") or "").strip()
+        if op in ("Blend", "Blnd"):
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_007", category="carrier", severity="medium",
+                    description=f"Blend on {line.get('description','')} — verify necessity (color match, panel separation)",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Verify blend is necessary for color match. Remove if panel separation exists or repair is minimal"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TOMMY'S AUDIT BRAIN — high-signal production rules
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_tommy_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # ── COVER_001: Cover car required with refinish ──
+    has_refinish = any(
+        str(r.get("operation", "")).strip() == "Ref" or 
+        "refinish" in str(r.get("description", "")).lower()
+        for r in parsed_lines
+    )
+    has_cover = any("cover car" in str(r.get("description", "")).lower() for r in parsed_lines)
+    if has_refinish and not has_cover:
+        findings.append(
+            QCFinding(rule_id="COVER_001", category="carrier", severity="high",
+                description="Refinish on estimate — cover car is missing (required when vehicle goes to paint booth)",
+                suggested_fix="Add cover car to the estimate"))
+
+    # ── FRAME_001: Frame set-up & measure ──
+    has_frame = any(
+        "frame" in str(r.get("description", "")).lower() or 
+        "frame" in str(r.get("panel_name", "")).lower()
+        for r in parsed_lines
+    )
+    has_setup = any(
+        "set" in str(r.get("description", "")).lower() and 
+        "measur" in str(r.get("description", "")).lower()
+        for r in parsed_lines
+    )
+    if has_frame and not has_setup:
+        findings.append(
+            QCFinding(rule_id="FRAME_001", category="labor", severity="high",
+                description="Frame damage detected — set-up and measure is missing (most commonly missed frame line)",
+                suggested_fix="Add set-up and measure for frame damage"))
+
+    # ── ALIGN_001: Alignment with tire/wheel damage ──
+    has_tire_wheel = any(
+        any(kw in str(r.get("description", "")).lower() for kw in ("tire", "wheel", "rim"))
+        for r in parsed_lines
+    )
+    has_align = any("align" in str(r.get("description", "")).lower() for r in parsed_lines)
+    if has_tire_wheel and not has_align:
+        findings.append(
+            QCFinding(rule_id="ALIGN_001", category="labor", severity="high",
+                description="Tire/wheel damage detected — alignment may be warranted (impact shifts geometry)",
+                suggested_fix="Review for wheel alignment. Add if tire/wheel damage confirmed"))
+
+    # ── CHECK_006: Damage-to-value % required in notes for >$3K ──
+    total = float(meta.get("total_estimate") or 0)
+    if total > 3000:
+        findings.append(
+            QCFinding(rule_id="DAMVAL_001", category="carrier", severity="high",
+                description=f"Estimate ${total:,.0f} — damage-to-value percentage must be in estimate notes. NO EXCEPTIONS per carrier guidelines",
+                suggested_fix="Add damage-to-value percentage in estimate notes"))
+
+    # ── ESCALATE_001: $10K+ estimate escalation ──
+    if total > 10000:
+        findings.append(
+            QCFinding(rule_id="ESCALATE_001", category="carrier", severity="high" if total > 15000 else "medium",
+                description=f"${total:,.0f} estimate — consider escalation. If unsure, contact supervisor before proceeding",
+                suggested_fix="Review findings. If uncertain, escalate to manager"))
 
     return findings

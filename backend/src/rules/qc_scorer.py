@@ -44,6 +44,7 @@ def calculate_carrier_confidence(
         "financial": [],
         "parts": [],
         "labor": [],
+        "carrier": [],
     }
     for f in findings:
         cat = f.get("category", "")
@@ -294,6 +295,46 @@ def calculate_carrier_confidence(
     score_breakdown["labor_analysis"] = labor_score
     rejection_reasons.extend(labor_fails)
     
+    # ════════════════════ Carrier Compliance (25 pts) ════════════════════
+    carrier_score = 25
+    carrier_fails: list[str] = []
+    
+    for f in findings_by_cat["carrier"]:
+        rid = f.get("rule_id", "")
+        sev = f.get("severity", "medium")
+        if rid == "NATGEN_001":
+            carrier_score -= 8
+            carrier_fails.append("Scan exceeds 0.5h carrier allowance")
+        elif rid == "NATGEN_004":
+            carrier_score -= 10
+            carrier_fails.append("OEM part doesn't meet carrier criteria (current MY + <15K mi)")
+        elif rid == "NATGEN_006":
+            carrier_score -= 5
+            carrier_fails.append("Replace operation — verify repair isn't viable")
+        elif rid == "NATGEN_007":
+            carrier_score -= 3
+            carrier_fails.append("Blend — verify color match necessity")
+        elif rid == "COVER_001":
+            carrier_score -= 5
+            carrier_fails.append("Cover car missing with refinish")
+        elif rid == "DAMVAL_001":
+            carrier_score -= 8
+            carrier_fails.append("Damage-to-value % not in notes")
+        elif rid == "ESCALATE_001":
+            if sev == "high":
+                carrier_score -= 10
+                carrier_fails.append("High-value estimate — escalation recommended")
+            else:
+                carrier_score -= 5
+                carrier_fails.append("Estimate may warrant escalation review")
+        else:
+            carrier_score -= 3
+            carrier_fails.append(f.get("description", "Carrier compliance issue"))
+    
+    carrier_score = max(carrier_score, 0)
+    score_breakdown["carrier_compliance"] = carrier_score
+    rejection_reasons.extend(carrier_fails)
+    
     total = sum(score_breakdown.values())
     
     # Generate auto-auditor note
@@ -301,8 +342,8 @@ def calculate_carrier_confidence(
     
     return QCScoreResult(
         total_score=total,
-        max_score=200,
-        ready_for_carrier=not auto_reject and total >= 140,
+        max_score=225,
+        ready_for_carrier=not auto_reject and total >= 158,
         score_breakdown=score_breakdown,
         rejection_reasons=rejection_reasons,
         auditor_note=auto_note,
@@ -311,15 +352,15 @@ def calculate_carrier_confidence(
 
 def _generate_auditor_note(score: int, rejections: list[str]) -> str:
     """Generate a default auditor note based on score."""
-    if score >= 170:
+    if score >= 191:
         return "✓ All checks passed. Estimate is complete and compliant. Ready for carrier submission."
-    elif score >= 140:
-        return f"⚠ Conditional pass ({score}/200). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
+    elif score >= 158:
+        return f"⚠ Conditional pass ({score}/225). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
     else:
         issues = "; ".join(rejections[:3])
         if len(rejections) > 3:
             issues += f" and {len(rejections) - 3} more"
-        return f"✗ Not ready for carrier ({score}/200). Critical issues: {issues}. Correct before resubmitting."
+        return f"✗ Not ready for carrier ({score}/225). Critical issues: {issues}. Correct before resubmitting."
 
 
 def export_training_dataset(
