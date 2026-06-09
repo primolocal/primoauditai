@@ -32,6 +32,64 @@ router = APIRouter(prefix="/api/qc", tags=["qc"])
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/primoauditai/qc"))
 
 
+
+
+# ── Training/Learning Routes ──
+
+class TrainingFeedback(BaseModel):
+    photo_id: str
+    original_type: str = ""
+    corrected_type: str = ""
+    original_location: str = ""
+    corrected_location: str = ""
+
+
+@router.post("/train/feedback")
+def save_training_feedback(body: TrainingFeedback, request: Request) -> dict[str, Any]:
+    """Save human-corrected photo labels as training data."""
+    db = request.app.state.db
+    photo = db.query(QCPhoto).filter(QCPhoto.id == body.photo_id).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    vision = dict(photo.vision_result) if photo.vision_result else {}
+    corrections = vision.get("human_corrections", [])
+    corrections.append({
+        "timestamp": datetime.now(UTC).isoformat(),
+        "original_type": body.original_type,
+        "corrected_type": body.corrected_type,
+        "original_location": body.original_location,
+        "corrected_location": body.corrected_location,
+    })
+    vision["human_corrections"] = corrections
+    photo.vision_result = vision
+    db.commit()
+    return {"status": "saved", "correction_count": len(corrections)}
+
+
+@router.get("/train/export")
+def export_training_labels(request: Request) -> dict[str, Any]:
+    """Export all human-corrected labels."""
+    db = request.app.state.db
+    photos = db.query(QCPhoto).filter(QCPhoto.vision_result.isnot(None)).all()
+    
+    training_data = []
+    for p in photos:
+        vision = p.vision_result or {}
+        corrections = vision.get("human_corrections", [])
+        if corrections:
+            training_data.append({
+                "photo_id": str(p.id),
+                "ai_type": vision.get("type", p.photo_type),
+                "ai_location": vision.get("location", "unknown"),
+                "corrected_type": corrections[-1].get("corrected_type", p.photo_type),
+                "corrected_location": corrections[-1].get("corrected_location", vision.get("location", "unknown")),
+                "correction_count": len(corrections),
+            })
+    
+    return {"total": len(training_data), "training_samples": training_data}
+
+
 @router.post("")
 async def create_qc(
     request: Request,
@@ -613,84 +671,6 @@ async def delete_photo(
         await db.commit()
         return {"deleted": str(photo_id)}
 
-
-
-class TrainingFeedback(BaseModel):
-    photo_id: str
-    original_type: str = ""
-    corrected_type: str = ""
-    original_location: str = ""
-    corrected_location: str = ""
-
-
-@router.post("/train/feedback")
-async def save_training_feedback(
-    body: TrainingFeedback,
-) -> dict[str, Any]:
-    """Save human-corrected photo labels as training data for model improvement."""
-    photo_id = body.photo_id
-    original_type = body.original_type
-    corrected_type = body.corrected_type
-    original_location = body.original_location
-    corrected_location = body.corrected_location
-    
-    if not photo_id:
-        raise HTTPException(status_code=400, detail="photo_id required")
-    
-    async with async_session() as db:
-        result = await db.execute(select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id)))
-        photo = result.scalar_one_or_none()
-        if not photo:
-            raise HTTPException(status_code=404, detail="Photo not found")
-        
-        # Store correction in vision_result JSON for learning
-        vision = dict(photo.vision_result) if photo.vision_result else {}
-        corrections = vision.get("human_corrections", [])
-        corrections.append({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "original_type": original_type,
-            "corrected_type": corrected_type,
-            "original_location": original_location,
-            "corrected_location": corrected_location,
-        })
-        vision["human_corrections"] = corrections
-        photo.vision_result = vision
-        await db.commit()
-        
-        return {"status": "saved", "correction_count": len(corrections)}
-
-
-@router.get("/train/export")
-async def export_training_labels(request: Request) -> dict[str, Any]:
-    """Export all human-corrected labels as training data for model fine-tuning."""
-    async with async_session() as db:
-        result = await db.execute(
-            select(QCPhoto).filter(QCPhoto.vision_result.isnot(None))
-        )
-        photos = result.scalars().all()
-    
-    training_data = []
-    for p in photos:
-        vision = p.vision_result or {}
-        corrections = vision.get("human_corrections", [])
-        if corrections:
-            # Get the original AI label
-            original = {
-                "photo_id": str(p.id),
-                "ai_type": vision.get("type", p.photo_type),
-                "ai_location": vision.get("location", "unknown"),
-                "corrected_type": corrections[-1].get("corrected_type", p.photo_type),
-                "corrected_location": corrections[-1].get("corrected_location", vision.get("location", "unknown")),
-                "correction_count": len(corrections),
-            }
-            training_data.append(original)
-    
-    return {
-        "total": len(training_data),
-        "training_samples": training_data,
-        "format": "supervised — ai_label → human_corrected_label",
-        "use_for": "Fine-tune Gemini prompts or train YOLOv11m custom model",
-    }
 
 
 @router.get("/dataset/export")
