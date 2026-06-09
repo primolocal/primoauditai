@@ -40,6 +40,8 @@ def calculate_carrier_confidence(
         "completeness": [],
         "state_compliance": [],
         "exception": [],
+        "line_analysis": [],
+        "financial": [],
     }
     for f in findings:
         cat = f.get("category", "")
@@ -162,6 +164,59 @@ def calculate_carrier_confidence(
     score_breakdown["exception_handling"] = exception_score
     rejection_reasons.extend(exception_fails)
     
+    # ════════════════════ Line Item Analysis (25 pts) ════════════════════
+    line_score = 25
+    line_fails: list[str] = []
+    
+    for f in findings_by_cat["line_analysis"]:
+        rid = f.get("rule_id", "")
+        desc = f.get("description", "")
+        if rid == "LINE_001":
+            line_score -= 8
+            line_fails.append("Overlapping operations detected — review duplicates")
+        elif rid == "LINE_002":
+            line_score -= 3
+            line_fails.append("Suspiciously low labor hours — verify scope")
+        elif rid == "LINE_003":
+            line_score -= 3
+            line_fails.append("Missing blend on adjacent panel")
+        elif rid == "LINE_004":
+            line_score -= 2
+            line_fails.append("LKQ/used parts — document age and warranty")
+        else:
+            line_score -= 2
+            line_fails.append(desc)
+    
+    line_score = max(line_score, 0)
+    score_breakdown["line_analysis"] = line_score
+    rejection_reasons.extend(line_fails)
+    
+    # ════════════════════ Financial (25 pts) ════════════════════
+    financial_score = 25
+    financial_fails: list[str] = []
+    
+    for f in findings_by_cat["financial"]:
+        rid = f.get("rule_id", "")
+        desc = f.get("description", "")
+        if rid == "FIN_001":
+            financial_score -= 5
+            financial_fails.append("Paint materials not itemized")
+        elif rid == "FIN_002":
+            sev = f.get("severity", "medium")
+            if sev == "high":
+                financial_score -= 12
+                financial_fails.append("Estimate approaching total loss threshold")
+            else:
+                financial_score -= 5
+                financial_fails.append("Estimate approaching ACV — monitor")
+        else:
+            financial_score -= 3
+            financial_fails.append(desc)
+    
+    financial_score = max(financial_score, 0)
+    score_breakdown["financial"] = financial_score
+    rejection_reasons.extend(financial_fails)
+    
     total = sum(score_breakdown.values())
     
     # Generate auto-auditor note
@@ -169,8 +224,8 @@ def calculate_carrier_confidence(
     
     return QCScoreResult(
         total_score=total,
-        max_score=100,
-        ready_for_carrier=not auto_reject and total >= 70,
+        max_score=150,
+        ready_for_carrier=not auto_reject and total >= 105,
         score_breakdown=score_breakdown,
         rejection_reasons=rejection_reasons,
         auditor_note=auto_note,
@@ -179,15 +234,15 @@ def calculate_carrier_confidence(
 
 def _generate_auditor_note(score: int, rejections: list[str]) -> str:
     """Generate a default auditor note based on score."""
-    if score >= 85:
+    if score >= 128:
         return "✓ All checks passed. Estimate is complete and compliant. Ready for carrier submission."
-    elif score >= 70:
-        return f"⚠ Conditional pass ({score}/100). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
+    elif score >= 105:
+        return f"⚠ Conditional pass ({score}/150). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
     else:
         issues = "; ".join(rejections[:3])
         if len(rejections) > 3:
             issues += f" and {len(rejections) - 3} more"
-        return f"✗ Not ready for carrier ({score}/100). Critical issues: {issues}. Correct before resubmitting."
+        return f"✗ Not ready for carrier ({score}/150). Critical issues: {issues}. Correct before resubmitting."
 
 
 def export_training_dataset(

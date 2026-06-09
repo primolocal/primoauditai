@@ -76,6 +76,15 @@ def run_qc_rules(
         # Supplements: only check A/M justification, not flags/manual entries
         findings.extend(_check_exceptions_supplement(parsed_lines, parsed_metadata))
 
+    # ── Line Item Analysis ──
+    findings.extend(_check_line_items(parsed_lines, parsed_metadata))
+
+    # ── Financial Analysis ──
+    findings.extend(_check_financials(parsed_lines, parsed_metadata))
+
+    # ── Vehicle Info ──
+    findings.extend(_check_vehicle_completeness(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -458,4 +467,228 @@ def _check_exceptions_supplement(
         )
 
     return findings
+# ═══════════════════════════════════════════════════════════════════════
+# LINE ITEM ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════
 
+def _check_line_items(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # ── Overlapping operations (same panel, same operation) ──
+    panel_ops: dict[tuple[str, str], list[int]] = {}
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        panel = (line.get("panel_name") or "").strip().lower()
+        op = (line.get("operation") or "").strip().lower()
+        ln = line.get("line_no")
+        if panel and op and ln:
+            key = (panel, op)
+            panel_ops.setdefault(key, []).append(int(ln) if str(ln).isdigit() else 0)
+
+    overlap_lines: list[int] = []
+    for (panel, op), lns in panel_ops.items():
+        if len(lns) > 1:
+            overlap_lines.extend(lns)
+
+    if overlap_lines:
+        findings.append(
+            QCFinding(
+                rule_id="LINE_001",
+                category="line_analysis",
+                severity="medium",
+                description=f"Potential overlapping operations: {len(overlap_lines)} line(s) with same panel + operation",
+                line_numbers=overlap_lines,
+                suggested_fix="Review duplicate/overlapping entries — remove or document justification",
+            )
+        )
+
+    # ── Suspicious labor hours (hood replace <2h, door skin <3h, full respray <8h) ──
+    body_minimums = {
+        "hood": 2.0, "front bumper": 1.5, "rear bumper": 1.5,
+        "fender": 1.0, "door": 2.0, "quarter panel": 3.0,
+        "roof": 4.0, "trunk lid": 1.5, "deck lid": 1.5,
+        "liftgate": 2.0, "headlamp": 0.5, "tail lamp": 0.3,
+        "grille": 0.5, "radiator support": 1.5,
+    }
+    suspicious_lines: list[int] = []
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        op = (line.get("operation") or "").strip()
+        if op not in ("Repl", "Rpr", "R&I"):
+            continue
+        lh = line.get("labor_hours") or 0
+        panel = (line.get("panel_name") or "").strip().lower()
+        minimum = body_minimums.get(panel)
+        if minimum and float(lh) < minimum * 0.5:  # less than 50% of expected
+            ln = line.get("line_no")
+            if ln and str(ln).isdigit():
+                suspicious_lines.append(int(ln))
+
+    if suspicious_lines:
+        findings.append(
+            QCFinding(
+                rule_id="LINE_002",
+                category="line_analysis",
+                severity="low",
+                description=f"Unusually low labor hours on {len(suspicious_lines)} line(s) — verify operation scope",
+                line_numbers=suspicious_lines,
+                suggested_fix="Verify labor hours are correct for the listed operation",
+            )
+        )
+
+    # ── Paint: missing blend on adjacent panel ──
+    adjacents = [
+        ("hood", "fender"), ("fender", "door"), ("door", "quarter panel"),
+        ("quarter panel", "roof"), ("roof", "hood"),
+        ("front bumper", "hood"), ("front bumper", "fender"),
+        ("rear bumper", "quarter panel"), ("rear bumper", "trunk lid"),
+        ("trunk lid", "quarter panel"), ("liftgate", "quarter panel"),
+    ]
+    painted_panels = set()
+    all_panels = set()
+    for line in parsed_lines:
+        panel = (line.get("panel_name") or "").strip().lower()
+        if not panel:
+            continue
+        all_panels.add(panel)
+        paint_hours = line.get("paint_hours") or 0
+        op = (line.get("operation") or "").strip()
+        if float(paint_hours) > 0 or op in ("Repl", "Rpr"):
+            painted_panels.add(panel)
+
+    missing_blend: list[int] = []
+    for a, b in adjacents:
+        if a in painted_panels and b in all_panels and b not in painted_panels:
+            for line in parsed_lines:
+                ln = line.get("line_no")
+                if (line.get("panel_name") or "").strip().lower() == a:
+                    if ln and str(ln).isdigit():
+                        missing_blend.append(int(ln))
+                        break
+
+    if missing_blend:
+        findings.append(
+            QCFinding(
+                rule_id="LINE_003",
+                category="line_analysis",
+                severity="low",
+                description=f"Paint operation on panel with adjacent panel not blended — verify if blend needed",
+                line_numbers=missing_blend,
+                suggested_fix="Check adjacent panel for required blend/clear coat",
+            )
+        )
+
+    # ── LKQ parts without ACV carry‑over notation ──
+    lkq_lines: list[int] = []
+    for line in parsed_lines:
+        pt = (line.get("part_type") or "").strip().upper()
+        if pt in ("LKQ", "USED", "REC", "REM"):
+            ln = line.get("line_no")
+            if ln and str(ln).isdigit():
+                lkq_lines.append(int(ln))
+
+    if lkq_lines:
+        findings.append(
+            QCFinding(
+                rule_id="LINE_004",
+                category="line_analysis",
+                severity="low",
+                description=f"LKQ/used parts on {len(lkq_lines)} line(s) — verify part age and warranty notation",
+                line_numbers=lkq_lines,
+                suggested_fix="Document LKQ part mileage, age, and warranty terms",
+            )
+        )
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# FINANCIAL ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_financials(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # ── Paint material % vs paint labor ──
+    total_paint_labor = 0.0
+    total_paint_material = 0.0
+    for line in parsed_lines:
+        ph = float(line.get("paint_hours") or 0)
+        if ph > 0:
+            total_paint_labor += ph
+        pm = float(line.get("part_price") or 0) if "paint" in (line.get("description") or "").lower() else 0
+        total_paint_material += pm
+
+    if total_paint_labor > 0 and total_paint_material == 0:
+        findings.append(
+            QCFinding(
+                rule_id="FIN_001",
+                category="financial",
+                severity="medium",
+                description=f"Paint labor ({total_paint_labor:.1f} hrs) present but no paint materials found — verify materials are itemized",
+                suggested_fix="Add paint material line item (typically 30-35% of paint labor)",
+            )
+        )
+
+    # ── Total estimate vs ACV (market value check) ──
+    total = float(meta.get("total_estimate") or 0)
+    acv = float(meta.get("acv") or 0)
+    if acv > 0 and total > acv * 0.75:
+        findings.append(
+            QCFinding(
+                rule_id="FIN_002",
+                category="financial",
+                severity="high" if total > acv * 0.90 else "medium",
+                description=f"Estimate total (${total:,.0f}) is {total/acv:.0%} of ACV (${acv:,.0f}) — total loss potential",
+                suggested_fix="Flag for total loss evaluation" if total > acv * 0.90 else "Monitor for supplement creep",
+            )
+        )
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# VEHICLE INFO
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_vehicle_completeness(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # VIN
+    vin = meta.get("vin") or ""
+    if not vin or len(str(vin)) < 11:
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_009",
+                category="completeness",
+                severity="high",
+                description="Complete VIN not recorded on estimate",
+                suggested_fix="Full 17-character VIN must be present on every estimate",
+            )
+        )
+
+    # Year / Make / Model
+    missing = []
+    for field in ("year", "make", "model"):
+        if not meta.get(field):
+            missing.append(field)
+    if missing:
+        findings.append(
+            QCFinding(
+                rule_id="COMPLETE_010",
+                category="completeness",
+                severity="medium",
+                description=f"Missing vehicle info: {', '.join(missing)}",
+                suggested_fix="Complete vehicle year, make, and model required",
+            )
+        )
+
+    return findings
