@@ -79,6 +79,11 @@ class PDFEstimateParser:
         # Fallback: if position fails, try text-based regex
         if not rf_info:
             rf_info = self._extract_repair_facility_fallback(all_text)
+        # Validate: if shop_name looks like an owner name (contains comma), discard
+        if rf_info and rf_info.get("shop_name"):
+            sn = rf_info["shop_name"]
+            if "," in sn and not any(kw in sn.upper() for kw in ["COLLISION", "AUTO", "BODY", "REPAIR", "MOTORS", "MAACO", "SHOP", "GARAGE"]):
+                rf_info = None
         if rf_info:
             for key in ("shop_name", "shop_address", "shop_phone"):
                 if rf_info.get(key):
@@ -577,7 +582,7 @@ class PDFEstimateParser:
                         text = span["text"].strip()
                         if not text:
                             continue
-                        if abs(sx - rf_x) < 60 and sy > rf_y:
+                        if sx > rf_x - 40 and sx < rf_x + 40 and sy > rf_y:
                             # Stop completely at VEHICLE section or other headers
                             if text.upper() in ("VEHICLE", "INTERIOR COLOR:", "EXTERIOR COLOR:", 
                                                 "LICENSE:", "VIN:", "ODOMETER:", "STATE:", "CONDITION:",
