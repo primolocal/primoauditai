@@ -67,6 +67,24 @@ def calculate_carrier_confidence(
         photo_fails.append("AUTO-REJECT: Damage photos missing from packet")
     
     photo_score = max(photo_score, 0)
+    # Process photo-related findings
+    for f in findings_by_cat["photo_coverage"]:
+        rid = f.get("rule_id", "")
+        if rid in ("PHOTOCOV_001", "PHOTOCOV_002", "PHOTOCOV_003"):
+            continue  # Already handled above
+        elif rid == "PHOTOCOV_005":
+            photo_score -= 5
+            photo_fails.append("License plate photo missing")
+        elif rid == "PHOTOCOV_006":
+            photo_score -= 5
+            photo_fails.append("Photo count below panel count")
+        elif rid == "PHOTOCOV_007":
+            photo_score -= 3
+            photo_fails.append("No overview/full-vehicle photo")
+        else:
+            photo_score -= 3
+            photo_fails.append(f.get("description", "Photo coverage issue"))
+    photo_score = max(photo_score, 0)
     score_breakdown["photo_coverage"] = photo_score
     rejection_reasons.extend(photo_fails)
     
@@ -183,6 +201,9 @@ def calculate_carrier_confidence(
         elif rid == "LINE_004":
             line_score -= 2
             line_fails.append("LKQ/used parts — document age and warranty")
+        elif rid == "LINE_005":
+            line_score -= 5
+            line_fails.append("A/M parts without CAPA certification")
         else:
             line_score -= 2
             line_fails.append(desc)
@@ -209,6 +230,12 @@ def calculate_carrier_confidence(
             else:
                 financial_score -= 5
                 financial_fails.append("Estimate approaching ACV — monitor")
+        elif rid == "FIN_003":
+            financial_score -= 5
+            financial_fails.append("Paint materials exceed 38% cap")
+        elif rid == "FIN_004":
+            financial_score -= 3
+            financial_fails.append("Sublet charges — verify invoice")
         else:
             financial_score -= 3
             financial_fails.append(desc)
