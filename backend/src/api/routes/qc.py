@@ -615,17 +615,24 @@ async def delete_photo(
 
 
 
+class TrainingFeedback(BaseModel):
+    photo_id: str
+    original_type: str = ""
+    corrected_type: str = ""
+    original_location: str = ""
+    corrected_location: str = ""
+
+
 @router.post("/train/feedback")
 async def save_training_feedback(
-    request: Request,
+    body: TrainingFeedback,
 ) -> dict[str, Any]:
     """Save human-corrected photo labels as training data for model improvement."""
-    body = await request.json()
-    photo_id = body.get("photo_id", "")
-    original_type = body.get("original_type", "")
-    corrected_type = body.get("corrected_type", "")
-    original_location = body.get("original_location", "")
-    corrected_location = body.get("corrected_location", "")
+    photo_id = body.photo_id
+    original_type = body.original_type
+    corrected_type = body.corrected_type
+    original_location = body.original_location
+    corrected_location = body.corrected_location
     
     if not photo_id:
         raise HTTPException(status_code=400, detail="photo_id required")
