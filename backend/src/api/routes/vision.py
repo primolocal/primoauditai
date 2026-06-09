@@ -162,14 +162,23 @@ async def demo_audit_vision(request: Request) -> dict[str, Any]:
         {"line_no": "15", "operation": "Rpr", "panel_name": "RT FRONT DOOR", "description": "Repair right front door"},
     ]
 
-    result = analyze_damage_photos(demo_photos, demo_lines)
-    return {
-        "demo": True,
-        "model": "mock-cardd-v0",
-        "production_model": "llama3.2-vision:11b or qwen3-vl:235b",
-        "how_to_upgrade": "Swap mock detector with real CarDD/Ollama call in damage_detector.py",
-        **result,
-    }
+    try:
+        result = analyze_damage_photos(demo_photos, demo_lines)
+        return {
+            "demo": True,
+            "model": result.get("model", "mock"),
+            "findings_count": len(result.get("findings", [])),
+            "photos_analyzed": len(demo_photos),
+            **result,
+        }
+    except Exception as e:
+        return {
+            "demo": True,
+            "model": "mock-fallback",
+            "error": str(e),
+            "findings_count": 0,
+            "photos_analyzed": len(demo_photos),
+        }
 
 
 @router.post("/audit-photos")
@@ -221,7 +230,17 @@ async def audit_photos_from_pdf(
         })
 
     # Run damage detection + cross-reference
-    result = analyze_damage_photos(photos_for_analysis, estimate_lines)
+    try:
+        result = analyze_damage_photos(photos_for_analysis, estimate_lines)
+    except Exception as e:
+        return {
+            "photos": [],
+            "findings": [],
+            "model": "mock-fallback",
+            "error": str(e),
+            "estimate_lines_checked": len(estimate_lines),
+            "photos_extracted": len(raw_photos),
+        }
 
     return {
         "photos_extracted": len(raw_photos),

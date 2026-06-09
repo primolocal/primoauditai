@@ -29,6 +29,7 @@ function formatDate(iso: string) {
 export default function QCPage() {
   const [packets, setPackets] = React.useState<QCPacket[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState("")
   const [listLoading, setListLoading] = React.useState(true)
   const [error, setError] = React.useState("")
   const [success, setSuccess] = React.useState("")
@@ -116,14 +117,16 @@ export default function QCPage() {
         <h3 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Upload QC Packet</h3>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs text-[#8b949e]">Estimate PDF</label>
+            <label className="mb-1 block text-xs text-[#8b949e]">Estimate PDF <span className="text-[#f0883e]">*required</span></label>
             <input type="file" accept=".pdf" required onChange={(e) => setEstimatePdf(e.target.files?.[0] || null)}
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]" />
+            {estimatePdf && <span className="mt-1 block text-xs text-green-400">✓ {estimatePdf.name}</span>}
           </div>
           <div>
-            <label className="mb-1 block text-xs text-[#8b949e]">Image PDF (optional — extracts + labels photos)</label>
+            <label className="mb-1 block text-xs text-[#8b949e]">Image PDF <span className="text-[#484f58]">— extracts & labels damage photos</span></label>
             <input type="file" accept=".pdf" onChange={(e) => setImagePdf(e.target.files?.[0] || null)}
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]" />
+            {imagePdf && <span className="mt-1 block text-xs text-green-400">✓ {imagePdf.name}</span>}
           </div>
           <div>
             <label className="mb-1 block text-xs text-[#8b949e]">EMS ZIP (optional — provides structured data)</label>
