@@ -312,6 +312,22 @@ export default function QCDetailPage() {
                 )}
               </div>
 
+              {/* Estimate Lines */}
+              <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase text-[#484f58]">Estimate Lines ({lines.length})</h3>
+                <div className="max-h-96 space-y-1 overflow-y-auto">
+                  {lines.map((line) => (
+                    <div key={line.line_no} className="rounded bg-[#0d1117] p-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[#484f58]">{line.line_no}</span>
+                        {line.operation && <span className="rounded bg-[#21262d] px-1.5 py-0.5 text-[#8b949e]">{line.operation}</span>}
+                      </div>
+                      <div className="mt-0.5 truncate text-[#c9d1d9]">{line.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Auditor Note */}
               <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-4">
                 <h3 className="mb-2 text-xs font-semibold uppercase text-[#484f58]">Rejection Note / Message to Auditor</h3>
@@ -364,9 +380,28 @@ export default function QCDetailPage() {
                         <div className="mb-2 flex h-32 items-center justify-center rounded bg-[#21262d] text-xs text-[#484f58]">No preview</div>
                       )}
                       <div className="flex items-center justify-between">
-                        <span className={"rounded px-1.5 py-0 text-[10px] font-semibold border " + (typeBadge[p.photo_type || "other"] || typeBadge.other)}>
-                          {p.photo_type || "other"}
-                        </span>
+                        <select
+                          value={p.photo_type || "other"}
+                          onChange={async (e) => {
+                            const newType = e.target.value
+                            await fetch(`${API_URL}/api/qc/` + id + `/photos/` + p.id + `/type`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+                              body: JSON.stringify({ photo_type: newType }),
+                            })
+                            await load()
+                          }}
+                          className="rounded border border-[#30363d] bg-[#0d1117] px-1 py-0.5 text-[10px] text-[#c9d1d9]"
+                        >
+                          {[
+                            { value: "vin", label: "VIN" },
+                            { value: "odometer", label: "Odometer" },
+                            { value: "damage", label: "Damage" },
+                            { value: "other", label: "Other" },
+                          ].map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                         {p.matched_lines && p.matched_lines.length > 0 && (
                           <span className="text-[10px] text-[#58a6ff] font-mono">L{p.matched_lines.join(", ")}</span>
                         )}

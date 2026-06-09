@@ -492,6 +492,32 @@ async def update_auditor_note(
     return {"id": packet_id, "auditor_note": body.auditor_note}
 
 
+
+
+class PhotoTypeUpdate(BaseModel):
+    photo_type: str  # vin, odometer, damage, other
+
+
+@router.patch("/{packet_id}/photos/{photo_id}/type")
+async def update_photo_type(
+    packet_id: str,
+    photo_id: str,
+    body: PhotoTypeUpdate,
+    request: Request,
+) -> dict[str, Any]:
+    """Update photo classification type (manual override)."""
+    db = request.app.state.db
+    photo = db.query(QCPhoto).filter(
+        QCPhoto.id == photo_id,
+        QCPhoto.qc_packet_id == packet_id,
+    ).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    photo.photo_type = body.photo_type
+    db.commit()
+    db.refresh(photo)
+    return {"id": photo.id, "photo_type": photo.photo_type}
+
 @router.get("/dataset/export")
 async def export_datasets(request: Request) -> dict[str, Any]:
     """Export all QC training datasets as downloadable JSON."""
