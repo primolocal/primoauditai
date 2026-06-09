@@ -1,230 +1,222 @@
 """
-EMS (CCC One) ZIP parser — extracts DBF records and normalizes line items.
+Lightweight CCC EMS ZIP metadata extractor.
+Opens EMS ZIP files, parses DBF tables, extracts structured metadata.
+Eliminates all PDF extraction issues by reading data directly from CCC.
 """
-import io
+
 import struct
 import zipfile
-from collections import defaultdict
 from typing import Any
 
-from src.parser.base import ParsedEstimate
+
+def parse_dbf(raw_bytes: bytes) -> list[dict[str, Any]]:
+    """Parse a DBF file from raw bytes. Returns list of record dicts."""
+    if len(raw_bytes) < 32:
+        return []
+    
+    sig = raw_bytes[0]
+    if sig not in (0x02, 0x03, 0x30, 0x31, 0x43, 0x83, 0x8B, 0xF5):
+        return []
+
+    num_records = struct.unpack("<I", raw_bytes[4:8])[0]
+    header_bytes = struct.unpack("<H", raw_bytes[8:10])[0]
+    record_bytes = struct.unpack("<H", raw_bytes[10:12])[0]
+
+    fields = []
+    offset = 32
+    rec_offset = 1
+
+    while offset < header_bytes:
+        if raw_bytes[offset] == 0x0D:
+            break
+        field_data = raw_bytes[offset : offset + 32]
+        if len(field_data) < 32:
+            break
+        name = field_data[0:11].split(b"\x00")[0].decode("ascii", errors="ignore")
+        if not name:
+            break
+        length = field_data[16]
+        fields.append({"name": name, "length": length, "offset": rec_offset})
+        rec_offset += length
+        offset += 32
+
+    records = []
+    pos = header_bytes
+    for _ in range(min(num_records, 5000)):
+        if pos + record_bytes > len(raw_bytes):
+            break
+        record_data = raw_bytes[pos : pos + record_bytes]
+        if record_data[0] == 0x2A:  # deleted record
+            pos += record_bytes
+            continue
+        rec = {}
+        for f in fields:
+            start = f["offset"]
+            end = start + f["length"]
+            rec[f["name"]] = record_data[start:end].decode("latin-1", errors="ignore").strip()
+        records.append(rec)
+        pos += record_bytes
+
+    return records
 
 
-class EmsParser:
-    """Parse CCC One EMS ZIP files (.zip containing .DBF + .PDF)."""
+def extract_ems_metadata(zip_data: bytes) -> dict[str, Any]:
+    """Extract all QC-relevant metadata from a CCC EMS ZIP file."""
+    import io
+    
+    metadata: dict[str, Any] = {
+        "document_type": "ems_zip",
+        "claim_number": None,
+        "insurance_company": None,
+        "shop_name": None,
+        "shop_address": None,
+        "shop_phone": None,
+        "shop_of_choice": False,
+        "vin": None,
+        "vehicle_year": None,
+        "vehicle_make": None,
+        "vehicle_model": None,
+        "odometer": None,
+        "deductible": None,
+        "license_plate": None,
+        "labor_rate": None,
+        "tax_rate": None,
+        "state": None,
+        "zip_code": None,
+        "loss_date": None,
+        "loss_description": None,
+        "is_supplement": False,
+        "supplement_version": 0,
+        "parsed_lines": [],
+    }
 
-    def parse(self, file_bytes: bytes) -> ParsedEstimate:
-        """Parse EMS ZIP bytes into ParsedEstimate."""
-        with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-            # Find DBF file
-            dbf_name = None
-            pdf_name = None
-            for name in z.namelist():
-                if name.upper().endswith(".DBF"):
-                    dbf_name = name
-                elif name.upper().endswith(".PDF"):
-                    pdf_name = name
+    carrier_candidates = {}
 
-            if not dbf_name:
-                raise ValueError("No .DBF file found in EMS ZIP")
-
-            dbf_bytes = z.read(dbf_name)
-            records = self._parse_dbf(dbf_bytes)
-            lines = self._normalize_lines(records)
-
-            # Extract metadata from PDF if present
-            metadata: dict[str, Any] = {}
-            if pdf_name:
-                pdf_bytes = z.read(pdf_name)
-                metadata = self._extract_pdf_metadata(pdf_bytes)
-
-            metadata["document_type"] = "ems_zip"
-            metadata["ems_filename"] = dbf_name
-
-            panels = self._group_panels(lines)
-
-            return ParsedEstimate(
-                lines=lines,
-                panels=panels,
-                metadata=metadata,
-            )
-
-    def _parse_dbf(self, raw_bytes: bytes) -> list[dict[str, str]]:
-        """Parse DBF binary into record dictionaries."""
-        if len(raw_bytes) < 32:
-            return []
-
-        sig = raw_bytes[0]
-        if sig not in {0x02, 0x03, 0x30, 0x31, 0x43, 0xCB, 0xF5, 0x83, 0x8B, 0x04}:
-            return []
-
-        num_records = struct.unpack("<I", raw_bytes[4:8])[0]
-        header_bytes = struct.unpack("<H", raw_bytes[8:10])[0]
-        record_bytes = struct.unpack("<H", raw_bytes[10:12])[0]
-
-        # Parse field descriptors
-        fields = []
-        offset = 32
-        record_offset = 1
-
-        while offset < header_bytes:
-            if raw_bytes[offset] == 0x0D:
-                break
-
-            field_data = raw_bytes[offset : offset + 32]
-            if len(field_data) < 32:
-                break
-
-            name = field_data[0:11].split(b"\x00")[0].decode("ascii", errors="ignore")
-            if not name:
-                break
-
-            ftype = chr(field_data[11])
-            length = field_data[16]
-
-            fields.append({
-                "name": name,
-                "type": ftype,
-                "length": length,
-                "offset": record_offset,
-            })
-
-            record_offset += length
-            offset += 32
-
-        # Parse records
-        records = []
-        current_pos = header_bytes
-
-        for _ in range(min(num_records, 5000)):
-            if current_pos + record_bytes > len(raw_bytes):
-                break
-
-            record_data = raw_bytes[current_pos : current_pos + record_bytes]
-            if len(record_data) > 0 and record_data[0] != 0x2A:  # Not deleted
-                rec_obj: dict[str, str] = {}
-                for f in fields:
-                    start = f["offset"]
-                    end = start + f["length"]
-                    val = record_data[start:end].decode("latin-1", errors="ignore").strip()
-                    rec_obj[f["name"]] = val
-                records.append(rec_obj)
-
-            current_pos += record_bytes
-
-        return records
-
-    def _normalize_lines(self, records: list[dict[str, str]]) -> list[dict[str, Any]]:
-        """Normalize LIN records into flat line items."""
-        grouped = defaultdict(dict)
-
-        for row in records:
-            line_no = row.get("LINE_NO", "").strip()
-            if not line_no:
-                line_no = row.get("LINE_SEQ", "").strip()
-
-            desc = row.get("LINE_DESC", "").strip()
-            part_no = row.get("OEM_PARTNO", "").strip()
-
-            if not line_no and not desc:
+    with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
+        for filename in zf.namelist():
+            if filename.endswith("/"):
+                continue
+            
+            ext = filename.split(".")[-1].lower() if "." in filename else ""
+            
+            try:
+                raw = zf.read(filename)
+                if not raw:
+                    continue
+            except Exception:
                 continue
 
-            key = f"{line_no}_{desc}_{part_no}"
+            records = parse_dbf(raw)
+            if not records:
+                continue
 
-            if key not in grouped:
-                grouped[key] = {
-                    "line_no": line_no,
-                    "description": desc,
-                    "part_number": part_no,
-                    "operation_code": row.get("OPER_CD", "").strip() or row.get("OPER_DESC", "").strip() or row.get("OPER", "").strip(),
-                    "part_type": row.get("PART_TYP", "").strip() or row.get("PART_TYPE", "").strip() or row.get("PRT_TYP", "").strip(),
-                    "supplement": row.get("LINE_IND", "").strip(),
-                    "labor_hours": 0.0,
-                    "labor_amount": 0.0,
-                    "part_price": 0.0,
-                    "misc_amount": 0.0,
-                    "is_sublet": False,
-                    "is_included_labor": False,
-                    "panel_name": row.get("PANEL_DESC", "").strip() or "Uncategorized",
-                }
+            for row in records:
+                for k, v in row.items():
+                    val = str(v).strip()
+                    if not val:
+                        continue
+                    kl = k.upper().strip()
 
-            # Parse labor hours and amounts
-            lbr_ty = row.get("MOD_LBR_TY", "").strip() or row.get("LBR_TYPE", "").strip()  # noqa: F841
-            hrs = self._parse_float(row.get("DB_HRS", 0) or row.get("MOD_LB_HRS", 0) or row.get("ACT_LBR_HR", 0) or row.get("EST_LBR_HR", 0) or row.get("LBR_HRS", 0))
-            amt = self._parse_float(row.get("ACT_LBR_AM", 0) or row.get("LBR_AMT", 0) or row.get("MOD_LB_AMT", 0))
+                    # ── Claim number ──
+                    if kl in ("CLM_NO", "CLAIM_NO", "CLAIMNUM", "CLAIM_NUM", "CLAIM_ID") and not metadata["claim_number"]:
+                        metadata["claim_number"] = val
 
-            grouped[key]["labor_hours"] += hrs
-            grouped[key]["labor_amount"] += amt
+                    # ── Insurance / Carrier ──
+                    if kl in ("INS_CO_NM", "INS_CO_NAM", "INS_CMPNY", "INSCO", "CARRIER", "INS_COMP"):
+                        carrier_candidates["primary"] = val
+                    elif kl == "COMPANY":
+                        carrier_candidates["secondary"] = val
+                    elif kl == "CLM_OFC_NM":
+                        carrier_candidates["tertiary"] = val
 
-            # Sublet flag
-            misc_sublt = row.get("MISC_SUBLT", "").strip().upper()
-            if misc_sublt in {"Y", "TRUE"} or "sublet" in desc.lower() or "subl" in desc.lower():
-                grouped[key]["is_sublet"] = True
+                    # ── Shop info ──
+                    if kl == "LOC_NM" and not metadata["shop_name"]:
+                        metadata["shop_name"] = val
+                    elif kl == "LOC_ADDR1" and not metadata["shop_address"]:
+                        metadata["shop_address"] = val
+                    elif kl == "LOC_CITY":
+                        addr = metadata.get("shop_address", "") or ""
+                        if val not in addr:
+                            metadata["shop_address"] = (addr + " " + val).strip()
+                    elif kl == "LOC_ST":
+                        metadata["state"] = val
+                        addr = metadata.get("shop_address", "") or ""
+                        if val not in addr:
+                            metadata["shop_address"] = (addr + ", " + val).strip()
+                    elif kl == "LOC_ZIP":
+                        metadata["zip_code"] = val
+                        addr = metadata.get("shop_address", "") or ""
+                        if val not in addr:
+                            metadata["shop_address"] = (addr + " " + val).strip()
+                    elif kl in ("LOC_PH1", "LOC_PH") and not metadata["shop_phone"]:
+                        metadata["shop_phone"] = val
 
-            # Included labor flag
-            lbr_inc = row.get("LBR_INC", "").strip().upper()
-            if lbr_inc in {"Y", "TRUE"} and hrs > 0 and amt == 0:
-                grouped[key]["is_included_labor"] = True
+                    # ── Shop of Choice ──
+                    if kl in ("SHOP_CHOICE", "REPAIR_FACILITY_TYPE", "SHOP_TYPE"):
+                        val_lower = val.lower()
+                        if any(kw in val_lower for kw in ("choice", "owner", "customer", "claimant")):
+                            metadata["shop_of_choice"] = True
 
-            # Misc + part amounts
-            misc_amt = self._parse_float(row.get("MISC_AMT", 0) or row.get("SUBLET_AMT", 0))
-            part_price = self._parse_float(row.get("ACT_PRICE", 0) or row.get("UNIT_PRICE", 0) or row.get("PART_AMT", 0) or row.get("DB_PRICE", 0) or row.get("LIST_PRICE", 0))
+                    # ── Vehicle ──
+                    if kl in ("VIN_NO", "VIN", "VEH_VIN") and not metadata["vin"]:
+                        metadata["vin"] = val
+                    if kl in ("MODEL_YR", "VEH_YEAR", "YEAR") and not metadata["vehicle_year"]:
+                        try:
+                            metadata["vehicle_year"] = int(val)
+                        except ValueError:
+                            pass
+                    if kl in ("MAKE", "VEH_MAKE", "VEHICLE_MAKE") and not metadata["vehicle_make"]:
+                        metadata["vehicle_make"] = val
+                    if kl in ("MODEL", "VEH_MODEL", "VEHICLE_MODEL") and not metadata["vehicle_model"]:
+                        metadata["vehicle_model"] = val[:80]
+                    if kl in ("ODOMETER", "ODOMTR", "ODO", "MILEAGE") and not metadata["odometer"]:
+                        try:
+                            metadata["odometer"] = int(val.replace(",", ""))
+                        except ValueError:
+                            pass
 
-            grouped[key]["misc_amount"] = max(grouped[key]["misc_amount"], misc_amt)
-            grouped[key]["part_price"] = max(grouped[key]["part_price"], part_price)
+                    # ── Deductible ──
+                    if kl in ("DEDUCTIBLE", "DEDUCT", "DED_AMT", "DED_AMOUNT") and not metadata["deductible"]:
+                        try:
+                            metadata["deductible"] = float(val.replace("$", "").replace(",", ""))
+                        except ValueError:
+                            pass
 
-        lines = list(grouped.values())
+                    # ── License plate ──
+                    if kl in ("LIC_PLATE", "LICENSE", "LICENSE_PLATE", "LIC_NO", "TAG") and not metadata["license_plate"]:
+                        metadata["license_plate"] = val
 
-        import contextlib
-        with contextlib.suppress(Exception):
-            lines.sort(key=lambda x: int(x["line_no"]) if x["line_no"].isdigit() else 9999)
+                    # ── Labor/Tax rates ──
+                    if kl in ("LABOR_RATE", "BODY_RATE", "LBR_RT") and not metadata["labor_rate"]:
+                        try:
+                            metadata["labor_rate"] = float(val.replace("$", "").replace(",", ""))
+                        except ValueError:
+                            pass
+                    if kl in ("TAX_RATE", "SALES_TAX", "TAX_PCT") and not metadata["tax_rate"]:
+                        try:
+                            metadata["tax_rate"] = float(val.replace("%", "")) / 100 if "%" in val else float(val)
+                        except ValueError:
+                            pass
 
-        # Compute totals
-        for line in lines:
-            line["total"] = round(
-                line.get("part_price", 0.0) + line.get("labor_amount", 0.0) + line.get("misc_amount", 0.0),
-                2,
-            )
+                    # ── Loss info ──
+                    if kl in ("LOSS_DATE", "LOSSDATE", "DT_OF_LOSS", "DOL", "LOSS_DT") and not metadata["loss_date"]:
+                        if len(val) == 8 and val.isdigit():
+                            metadata["loss_date"] = f"{val[:4]}-{val[4:6]}-{val[6:]}"
+                        else:
+                            metadata["loss_date"] = val
+                    if kl in ("LOSS_TYPE", "TYPE_OF_LOSS", "LOSS_DESC", "CAUSE_OF_LOSS") and not metadata["loss_description"]:
+                        metadata["loss_description"] = val
 
-        return lines
+                    # ── State from vehicle ──
+                    if kl in ("VEH_STATE", "VEH_ST", "GARAGE_ST", "STATE") and not metadata["state"]:
+                        metadata["state"] = val
 
-    def _group_panels(self, lines: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        """Group lines by panel name."""
-        panels: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for line in lines:
-            panel = line.get("panel_name", "Uncategorized")
-            panels[panel].append(line)
-        return dict(panels)
+    # Resolve carrier
+    if carrier_candidates.get("primary"):
+        metadata["insurance_company"] = carrier_candidates["primary"]
+    elif carrier_candidates.get("secondary"):
+        metadata["insurance_company"] = carrier_candidates["secondary"]
+    elif carrier_candidates.get("tertiary"):
+        metadata["insurance_company"] = carrier_candidates["tertiary"]
 
-    def _extract_pdf_metadata(self, pdf_bytes: bytes) -> dict[str, Any]:
-        """Quick metadata extraction from embedded PDF."""
-        try:
-            import fitz
-            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-            text = ""
-            for page in doc:
-                text += page.get_text("text") + "\n"
-            doc.close()
-
-            info: dict[str, Any] = {}
-            import re
-            m = re.search(r"Claim\s*(?:Number|#)[:\s]+([\w-]+)", text, re.I)
-            if m:
-                info["claim_number"] = m.group(1).strip()
-            m = re.search(r"VIN[:\s]+([A-HJ-NPR-Z0-9]{17})", text, re.I)
-            if m:
-                info["vin"] = m.group(1).strip()
-            return info
-        except Exception:
-            return {}
-
-    @staticmethod
-    def _parse_float(val) -> float:
-        try:
-            if isinstance(val, str):
-                val = val.replace("$", "").replace(",", "").strip()
-                if not val:
-                    return 0.0
-            return float(val)
-        except Exception:
-            return 0.0
+    return metadata

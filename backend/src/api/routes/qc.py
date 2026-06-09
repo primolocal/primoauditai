@@ -36,11 +36,12 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/primoauditai/qc"))
 async def create_qc(
     request: Request,
     estimate_pdf: UploadFile = File(...),
+    ems_zip: UploadFile | None = None,
     vin_photo_present: str = Form("false"),
     odometer_photo_present: str = Form("false"),
     damage_photos_present: str = Form("false"),
 ) -> dict[str, Any]:
-    """Upload estimate PDF, run QC review with manual photo verification."""
+    """Upload estimate PDF (or EMS ZIP), run QC review with manual photo verification."""
     
     vin_present = vin_photo_present.lower() == "true"
     odo_present = odometer_photo_present.lower() == "true"
@@ -52,7 +53,7 @@ async def create_qc(
     # Read estimate bytes
     est_bytes = await estimate_pdf.read()
 
-    # Parse estimate
+    # Parse estimate from PDF
     try:
         parser = PDFEstimateParser()
         parsed = parser.parse(est_bytes)
@@ -61,6 +62,24 @@ async def create_qc(
         parsed_metadata = parsed.metadata
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Failed to parse estimate PDF: {e}")
+
+    # If EMS ZIP provided, override metadata with structured EMS data
+    if ems_zip and ems_zip.filename and ems_zip.filename.endswith(".zip"):
+        try:
+            from src.parser.ems_parser import extract_ems_metadata
+            ems_bytes = await ems_zip.read()
+            ems_meta = extract_ems_metadata(ems_bytes)
+            # EMS metadata overrides PDF-parsed metadata for key fields
+            for key in ("shop_name", "shop_address", "shop_phone", "shop_of_choice",
+                        "insurance_company", "deductible", "license_plate",
+                        "vin", "vehicle_year", "vehicle_make", "vehicle_model",
+                        "odometer", "labor_rate", "tax_rate", "state", "zip_code",
+                        "loss_date", "loss_description", "claim_number"):
+                if ems_meta.get(key) is not None and ems_meta.get(key) != "":
+                    parsed_metadata[key] = ems_meta[key]
+        except Exception as e:
+            # EMS parsing failed — continue with PDF metadata
+            pass
 
     # No image PDF — photos are reviewed manually by QC person
     classified_photos: list[dict[str, Any]] = []
