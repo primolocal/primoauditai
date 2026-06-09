@@ -141,3 +141,35 @@ Return JSON: {{"damage_types": ["type"], "severity": "minor|moderate|severe", "l
                 results.append({"filename": photo.filename, "error": str(e)})
 
     return {"results": results, "model": VISION_MODEL, "total": len(results)}
+
+
+@router.get("/demo")
+async def demo_audit_vision(request: Request) -> dict[str, Any]:
+    """Demonstrate the damage photo → audit cross-reference pipeline.
+    Uses mock damage detection. Replace with real model in production."""
+    from src.services.audit_vision import analyze_damage_photos
+
+    # Simulated extracted photos from a PDF packet
+    demo_photos = [
+        {"filename": "photo_001.jpg", "page": 1},
+        {"filename": "photo_002.jpg", "page": 2},
+        {"filename": "photo_003.jpg", "page": 3},
+    ]
+
+    # Simulated estimate lines
+    demo_lines = [
+        {"line_no": "5", "operation": "Repl", "panel_name": "HOOD", "description": "Replace hood"},
+        {"line_no": "7", "operation": "Repl", "panel_name": "FRONT BUMPER", "description": "Replace front bumper cover"},
+        {"line_no": "12", "operation": "Repl", "panel_name": "RT FENDER", "description": "Replace right fender"},
+        {"line_no": "15", "operation": "Rpr", "panel_name": "RT FRONT DOOR", "description": "Repair right front door"},
+    ]
+
+    result = analyze_damage_photos(demo_photos, demo_lines)
+
+    return {
+        "demo": True,
+        "model": "mock-cardd-v0",
+        "production_model": "llama3.2-vision:11b or qwen3-vl:235b",
+        "how_to_upgrade": "Replace 'from src.services.damage_detector import detector' with real CarDD/Ollama call",
+        **result,
+    }
