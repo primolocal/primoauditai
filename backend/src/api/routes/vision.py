@@ -149,14 +149,12 @@ async def demo_audit_vision(request: Request) -> dict[str, Any]:
     Uses mock damage detection. Replace with real model in production."""
     from src.services.audit_vision import analyze_damage_photos
 
-    # Simulated extracted photos from a PDF packet
     demo_photos = [
         {"filename": "photo_001.jpg", "page": 1},
         {"filename": "photo_002.jpg", "page": 2},
         {"filename": "photo_003.jpg", "page": 3},
     ]
 
-    # Simulated estimate lines
     demo_lines = [
         {"line_no": "5", "operation": "Repl", "panel_name": "HOOD", "description": "Replace hood"},
         {"line_no": "7", "operation": "Repl", "panel_name": "FRONT BUMPER", "description": "Replace front bumper cover"},
@@ -165,11 +163,71 @@ async def demo_audit_vision(request: Request) -> dict[str, Any]:
     ]
 
     result = analyze_damage_photos(demo_photos, demo_lines)
-
     return {
         "demo": True,
         "model": "mock-cardd-v0",
         "production_model": "llama3.2-vision:11b or qwen3-vl:235b",
-        "how_to_upgrade": "Replace 'from src.services.damage_detector import detector' with real CarDD/Ollama call",
+        "how_to_upgrade": "Swap mock detector with real CarDD/Ollama call in damage_detector.py",
+        **result,
+    }
+
+
+@router.post("/audit-photos")
+async def audit_photos_from_pdf(
+    request: Request,
+    image_pdf: UploadFile = File(...),
+    estimate_pdf: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Extract photos from image PDF, cross-reference with estimate lines."""
+    from src.photo_extractor import extract_photos_from_pdf
+    from src.parser.pdf_estimate_parser import PDFEstimateParser
+    from src.services.audit_vision import analyze_damage_photos
+
+    # Validate
+    if not image_pdf.filename or not image_pdf.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="image_pdf must be PDF")
+    if not estimate_pdf.filename or not estimate_pdf.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="estimate_pdf must be PDF")
+
+    # Read files
+    img_bytes = await image_pdf.read()
+    est_bytes = await estimate_pdf.read()
+
+    # Extract photos
+    try:
+        raw_photos = extract_photos_from_pdf(img_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to extract photos: {e}")
+
+    # Parse estimate
+    try:
+        parser = PDFEstimateParser()
+        parsed = parser.parse(est_bytes)
+        estimate_lines = parsed.lines
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Failed to parse estimate: {e}")
+
+    # Build photo list for analysis
+    import base64
+    photos_for_analysis = []
+    for i, p in enumerate(raw_photos):
+        b64 = base64.b64encode(p["bytes"]).decode() if p.get("bytes") else ""
+        photos_for_analysis.append({
+            "filename": f"photo_{p.get('page_num', 0)}_{p.get('image_index', i+1)}.{p.get('format', 'jpg')}",
+            "data_url": f"data:image/{p.get('format', 'jpeg')};base64,{b64}",
+            "page_num": p.get("page_num", 0),
+            "width": p.get("width", 0),
+            "height": p.get("height", 0),
+        })
+
+    # Run damage detection + cross-reference
+    result = analyze_damage_photos(photos_for_analysis, estimate_lines)
+
+    return {
+        "photos_extracted": len(raw_photos),
+        "photos_analyzed": len(photos_for_analysis),
+        "estimate_lines": len(estimate_lines),
+        "model": "mock-cardd-v0",
+        "upgrade": "ollama pull llama3.2-vision:11b",
         **result,
     }
