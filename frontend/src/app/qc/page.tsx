@@ -122,7 +122,7 @@ export default function QCPage() {
           </div>
           <div>
             <label className="mb-1 block text-xs text-[#8b949e]">Image PDF (optional — extracts + labels photos)</label>
-            <input type="file" accept=".pdf" onChange={(e) => setEstimatePdf(e.target.files?.[0] || null)}
+            <input type="file" accept=".pdf" onChange={(e) => setImagePdf(e.target.files?.[0] || null)}
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]" />
           </div>
           <div>
