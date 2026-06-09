@@ -86,47 +86,52 @@ async def create_qc(
     classified_photos: list[dict[str, Any]] = []
     packet_id = uuid.uuid4()
 
-    # If image PDF provided, extract and label photos
+    # If image PDF provided, extract and label photos using real vision model
     if image_pdf and image_pdf.filename and image_pdf.filename.endswith(".pdf"):
         try:
             from src.photo_extractor import extract_photos_from_pdf
             from src.services.damage_detector import detector as vision
             import base64 as _b64
+            from src.services.damage_detector import GeminiVisionDetector, OllamaVisionDetector
             
             img_bytes = await image_pdf.read()
             raw_photos = extract_photos_from_pdf(img_bytes)
             
             for idx, rp in enumerate(raw_photos):
-                # Determine photo type
+                b64_data = _b64.b64encode(rp["bytes"]).decode() if rp.get("bytes") else ""
                 w, h = rp.get("width", 0), rp.get("height", 0)
-                aspect = w / h if h > 0 else 0
                 
-                if aspect > 3.0 and h < 200:
-                    ptype = "vin"
-                elif 1.5 < aspect < 3.0 and h < 300:
-                    ptype = "odometer"
-                elif w > 400 and h > 300:
-                    ptype = "damage"
-                else:
-                    ptype = "other"
+                # Use real vision model (Gemini → Ollama → Mock fallback)
+                vision_result = vision.analyze(rp.get("bytes", b""), filename=f"photo_{idx}.jpg")
+                ptype = vision_result.get("type", "damage") if vision_result.get("damage") else "other"
+                confidence = round(vision_result.get("confidence", 0.5), 2)
+                location = vision_result.get("location", "unknown")
                 
-                # Match to estimate line (stub — vision model does this properly)
+                # Match to estimate line using vision-detected location + panel keywords
                 matched_lines: list[int] = []
-                if ptype == "damage":
+                if ptype in ("damage", "dent", "scratch", "crack", "rust") and location:
+                    location_lower = location.lower()
                     for line in parsed_lines:
                         panel = (line.get("panel_name") or "").lower()
+                        desc = (line.get("description") or "").lower()
                         if panel and not line.get("is_header"):
-                            matched_lines.append(int(line["line_no"]) if line.get("line_no", "").isdigit() else 0)
-                            break
+                            # Check if location appears in panel name or description
+                            if any(kw in location_lower for kw in panel.split()) or \
+                               any(kw in panel for kw in location_lower.split()):
+                                try:
+                                    matched_lines.append(int(line["line_no"]))
+                                except:
+                                    pass
                 
-                b64_data = _b64.b64encode(rp["bytes"]).decode() if rp.get("bytes") else ""
                 classified_photos.append({
                     "page_num": rp.get("page_num", 0),
                     "image_index": rp.get("image_index", idx + 1),
                     "width": w,
                     "height": h,
                     "photo_type": ptype,
-                    "matched_lines": matched_lines[:3],
+                    "photo_location": location,
+                    "confidence": confidence,
+                    "matched_lines": matched_lines[:3] or matched_lines[:3] if matched_lines else [],
                     "thumbnail_b64": f"data:image/jpeg;base64,{b64_data}",
                 })
         except Exception:
