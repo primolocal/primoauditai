@@ -42,6 +42,8 @@ def calculate_carrier_confidence(
         "exception": [],
         "line_analysis": [],
         "financial": [],
+        "parts": [],
+        "labor": [],
     }
     for f in findings:
         cat = f.get("category", "")
@@ -244,6 +246,54 @@ def calculate_carrier_confidence(
     score_breakdown["financial"] = financial_score
     rejection_reasons.extend(financial_fails)
     
+    # ════════════════════ Parts Sourcing (25 pts) ════════════════════
+    parts_score = 25
+    parts_fails: list[str] = []
+    
+    for f in findings_by_cat["parts"]:
+        rid = f.get("rule_id", "")
+        if rid == "PART_001":
+            parts_score -= 25
+            auto_reject = True
+            parts_fails.append("A/M structural parts — safety risk")
+        elif rid == "PART_002":
+            parts_score -= 3
+            parts_fails.append("High-value OE parts — verify pricing")
+        elif rid == "PART_003":
+            parts_score -= 2
+            parts_fails.append("LKQ parts without warranty notation")
+        else:
+            parts_score -= 3
+            parts_fails.append(f.get("description", "Parts issue"))
+    
+    parts_score = max(parts_score, 0)
+    score_breakdown["parts_sourcing"] = parts_score
+    rejection_reasons.extend(parts_fails)
+    
+    # ════════════════════ Labor Analysis (25 pts) ════════════════════
+    labor_score = 25
+    labor_fails: list[str] = []
+    
+    for f in findings_by_cat["labor"]:
+        rid = f.get("rule_id", "")
+        if rid == "LABOR_002":
+            labor_score -= 12
+            auto_reject = True
+            labor_fails.append("Zero labor hours on Replace line")
+        elif rid == "LABOR_001":
+            labor_score -= 5
+            labor_fails.append("Paint hours disproportionate to body hours")
+        elif rid == "LABOR_003":
+            labor_score -= 3
+            labor_fails.append("Unitemized miscellaneous charges")
+        else:
+            labor_score -= 3
+            labor_fails.append(f.get("description", "Labor issue"))
+    
+    labor_score = max(labor_score, 0)
+    score_breakdown["labor_analysis"] = labor_score
+    rejection_reasons.extend(labor_fails)
+    
     total = sum(score_breakdown.values())
     
     # Generate auto-auditor note
@@ -251,8 +301,8 @@ def calculate_carrier_confidence(
     
     return QCScoreResult(
         total_score=total,
-        max_score=150,
-        ready_for_carrier=not auto_reject and total >= 105,
+        max_score=200,
+        ready_for_carrier=not auto_reject and total >= 140,
         score_breakdown=score_breakdown,
         rejection_reasons=rejection_reasons,
         auditor_note=auto_note,
@@ -261,15 +311,15 @@ def calculate_carrier_confidence(
 
 def _generate_auditor_note(score: int, rejections: list[str]) -> str:
     """Generate a default auditor note based on score."""
-    if score >= 128:
+    if score >= 170:
         return "✓ All checks passed. Estimate is complete and compliant. Ready for carrier submission."
-    elif score >= 105:
-        return f"⚠ Conditional pass ({score}/150). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
+    elif score >= 140:
+        return f"⚠ Conditional pass ({score}/200). Minor exceptions found: {len(rejections)} item(s). Review and address flagged items before submission."
     else:
         issues = "; ".join(rejections[:3])
         if len(rejections) > 3:
             issues += f" and {len(rejections) - 3} more"
-        return f"✗ Not ready for carrier ({score}/150). Critical issues: {issues}. Correct before resubmitting."
+        return f"✗ Not ready for carrier ({score}/200). Critical issues: {issues}. Correct before resubmitting."
 
 
 def export_training_dataset(

@@ -87,6 +87,15 @@ def run_qc_rules(
     # ── Vehicle Info ──
     findings.extend(_check_vehicle_completeness(parsed_lines, parsed_metadata))
 
+    # ── Parts Sourcing ──
+    findings.extend(_check_part_sourcing(parsed_lines, parsed_metadata))
+
+    # ── Labor Analysis ──
+    findings.extend(_check_labor_analysis(parsed_lines, parsed_metadata))
+
+    # ── Enhanced State Compliance ──
+    findings.extend(_check_state_enhanced(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -818,5 +827,193 @@ def _check_financials(
                 description=f"Sublet operations on {len(sublet_lines)} line(s) — verify invoice attached",
                 line_numbers=sublet_lines,
                 suggested_fix="Attach sublet invoice and document scope of work"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# PARTS SOURCING
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_part_sourcing(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # Structural panel names (safety-critical)
+    structural_panels = {"frame rail", "radiator support", "core support", "apron",
+        "upper rail", "lower rail", "inner quarter", "rocker panel", "b-pillar",
+        "a-pillar", "cowl", "floor pan", "firewall", "rear body panel", "crossmember"}
+
+    structural_am: list[int] = []
+    oe_lines: list[int] = []
+    lkq_no_warranty: list[int] = []
+
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        pt = (line.get("part_type") or "").strip().upper()
+        panel = (line.get("panel_name") or "").strip().lower()
+        ln = line.get("line_no")
+        ln_int = int(ln) if ln and str(ln).isdigit() else 0
+
+        # Structural + A/M = dangerous
+        if pt in ("A/M", "AF") and any(sp in panel for sp in structural_panels):
+            structural_am.append(ln_int)
+
+        # OE price flag (price > $2000 without justification)
+        if pt in ("OE", "OEM") and float(line.get("part_price") or 0) > 2000:
+            oe_lines.append(ln_int)
+
+        # LKQ without warranty
+        if pt in ("LKQ", "USED") and "warranty" not in (line.get("description") or "").lower():
+            lkq_no_warranty.append(ln_int)
+
+    if structural_am:
+        findings.append(
+            QCFinding(rule_id="PART_001", category="parts", severity="critical",
+                description=f"A/M parts on structural/safety component(s) — potential safety risk",
+                line_numbers=structural_am,
+                suggested_fix="Replace A/M structural parts with OE. A/M not acceptable for safety-critical components"))
+
+    if oe_lines:
+        findings.append(
+            QCFinding(rule_id="PART_002", category="parts", severity="medium",
+                description=f"High-value OE parts (>$2,000) on {len(oe_lines)} line(s) — verify pricing",
+                line_numbers=oe_lines,
+                suggested_fix="Verify OE part pricing against list/MSRP"))
+
+    if lkq_no_warranty:
+        findings.append(
+            QCFinding(rule_id="PART_003", category="parts", severity="low",
+                description=f"LKQ/used parts without warranty notation on {len(lkq_no_warranty)} line(s)",
+                line_numbers=lkq_no_warranty,
+                suggested_fix="Document warranty terms for all LKQ/used parts"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# LABOR ANALYSIS
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_labor_analysis(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    total_body_labor = 0.0
+    total_paint_labor = 0.0
+    zero_labor_repl: list[int] = []
+    misc_charges: list[int] = []
+
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        bhl = float(line.get("labor_hours") or 0)
+        phl = float(line.get("paint_hours") or 0)
+        total_body_labor += bhl
+        total_paint_labor += phl
+
+        op = (line.get("operation") or "").strip()
+        ln = line.get("line_no")
+        ln_int = int(ln) if ln and str(ln).isdigit() else 0
+
+        # Zero labor on Replace
+        if op == "Repl" and bhl == 0:
+            zero_labor_repl.append(ln_int)
+
+        # Misc/various charges
+        desc = (line.get("description") or "").lower()
+        if any(kw in desc for kw in ("misc", "various", "shop supplies", "hazmat", "miscellaneous")):
+            misc_charges.append(ln_int)
+
+    # Paint ratio check (paint hours > 3x body hours is suspicious)
+    if total_body_labor > 0 and total_paint_labor > total_body_labor * 3:
+        findings.append(
+            QCFinding(rule_id="LABOR_001", category="labor", severity="medium",
+                description=f"Paint hours ({total_paint_labor:.1f}) > 3× body hours ({total_body_labor:.1f}) — verify",
+                suggested_fix="Verify paint labor is appropriate for damage extent"))
+
+    if zero_labor_repl:
+        findings.append(
+            QCFinding(rule_id="LABOR_002", category="labor", severity="high",
+                description=f"Zero labor hours on {len(zero_labor_repl)} Replace line(s) — verify",
+                line_numbers=zero_labor_repl,
+                suggested_fix="Replace operations must include labor hours"))
+
+    if misc_charges:
+        findings.append(
+            QCFinding(rule_id="LABOR_003", category="labor", severity="low",
+                description=f"Unitemized/miscellaneous charges on {len(misc_charges)} line(s)",
+                line_numbers=misc_charges,
+                suggested_fix="Itemize all charges — avoid 'misc' or 'shop supplies' catch-alls"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ENHANCED STATE COMPLIANCE
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_state_enhanced(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    state = (meta.get("state") or "").strip().upper()
+    vin = (meta.get("vin") or "").strip()
+    year_str = str(meta.get("year") or "").strip()
+
+    # ── RI: OE parts required on vehicles < 30 months ──
+    if state == "RI":
+        try:
+            veh_year = int(year_str)
+            if veh_year >= 2023:  # ~30 months from current
+                for line in parsed_lines:
+                    pt = (line.get("part_type") or "").strip().upper()
+                    if pt in ("A/M", "AF", "LKQ", "USED"):
+                        ln = line.get("line_no")
+                        findings.append(
+                            QCFinding(rule_id="STATEQC_010", category="state_compliance", severity="critical",
+                                description=f"RI law requires OE parts on vehicles < 30 months. Non-OE part found.",
+                                line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                                suggested_fix="Replace non-OE parts with OE per Rhode Island statute"))
+                        break  # One finding is enough
+        except (ValueError, TypeError):
+            pass
+
+    # ── MN: must disclose non-OE parts ──
+    if state == "MN":
+        non_oe = []
+        for line in parsed_lines:
+            if (line.get("part_type") or "").strip().upper() in ("A/M", "AF", "LKQ"):
+                ln = line.get("line_no")
+                if ln and str(ln).isdigit(): non_oe.append(int(ln))
+        if non_oe:
+            findings.append(
+                QCFinding(rule_id="STATEQC_011", category="state_compliance", severity="medium",
+                    description=f"MN requires written disclosure for non-OE parts ({len(non_oe)} found)",
+                    line_numbers=non_oe,
+                    suggested_fix="Attach signed non-OE parts disclosure per Minnesota statute"))
+
+    # ── WV: OE required for structural on vehicles < 3 years ──
+    if state == "WV":
+        try:
+            veh_year = int(year_str)
+            if veh_year >= 2023:
+                structural_kw = ["frame", "rail", "apron", "pillar", "rocker", "cowl", "floor"]
+                for line in parsed_lines:
+                    panel = (line.get("panel_name") or "").strip().lower()
+                    pt = (line.get("part_type") or "").strip().upper()
+                    if pt in ("A/M", "AF") and any(kw in panel for kw in structural_kw):
+                        ln = line.get("line_no")
+                        findings.append(
+                            QCFinding(rule_id="STATEQC_012", category="state_compliance", severity="critical",
+                                description=f"WV requires OE structural parts on vehicles < 3 years",
+                                line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                                suggested_fix="Replace A/M structural parts with OE per West Virginia statute"))
+                        break
+        except (ValueError, TypeError):
+            pass
 
     return findings
