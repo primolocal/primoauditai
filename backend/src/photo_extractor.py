@@ -25,6 +25,8 @@ def extract_photos_from_pdf(pdf_bytes: bytes) -> list[dict[str, Any]]:
         page = doc[page_num]
         image_list = page.get_images(full=True)
         
+        # Collect all valid images on this page, pick the LARGEST (skip banners/text overlays)
+        candidates = []
         for img_index, img in enumerate(image_list, start=1):
             xref = img[0]
             try:
@@ -33,16 +35,29 @@ def extract_photos_from_pdf(pdf_bytes: bytes) -> list[dict[str, Any]]:
                 continue
             
             image_bytes = base_image.get("image")
-            if not image_bytes or len(image_bytes) < 1024:
+            if not image_bytes or len(image_bytes) < 4096:  # Skip tiny images (<4KB)
                 continue
             
-            # Try to get PIL dimensions
-            width, height = base_image.get("width", 0), base_image.get("height", 0)
-            ext = base_image.get("ext", "unknown")
+            width = base_image.get("width", 0)
+            height = base_image.get("height", 0)
             
+            # Skip banners/strips (aspect ratio > 4:1 or < 1:4, or too small in either dimension)
+            if width < 200 or height < 200:
+                continue
+            aspect = width / max(height, 1)
+            if aspect > 4.0 or aspect < 0.25:
+                continue
+            
+            area = width * height
+            candidates.append((area, width, height, base_image.get("ext", "jpg"), image_bytes))
+        
+        # Take the single largest image per page (the actual photo, not banners)
+        if candidates:
+            candidates.sort(reverse=True, key=lambda x: x[0])
+            area, width, height, ext, image_bytes = candidates[0]
             photos.append({
                 "page_num": page_num + 1,
-                "image_index": img_index,
+                "image_index": 1,
                 "width": width,
                 "height": height,
                 "format": ext,
