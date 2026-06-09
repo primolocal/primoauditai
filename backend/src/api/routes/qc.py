@@ -647,7 +647,7 @@ async def save_training_feedback(
         vision = dict(photo.vision_result) if photo.vision_result else {}
         corrections = vision.get("human_corrections", [])
         corrections.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "original_type": original_type,
             "corrected_type": corrected_type,
             "original_location": original_location,
