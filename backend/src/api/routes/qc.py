@@ -543,53 +543,45 @@ async def update_photo_type(
 async def update_photo_location(
     packet_id: str,
     photo_id: str,
-    request: Request,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
     """Update photo damage location (manual override)."""
-    body = await request.json()
-    new_location = body.get("photo_location", "").strip()
+    new_location = (body.get("photo_location") or "").strip()
     
-    db = request.app.state.db
-    photo = db.query(QCPhoto).filter(
-        QCPhoto.id == photo_id,
-        QCPhoto.qc_packet_id == packet_id,
-    ).first()
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    
-    # Store in vision_result JSON (no schema migration needed)
-    vision = dict(photo.vision_result) if photo.vision_result else {}
-    vision["location"] = new_location
-    photo.vision_result = vision
-    db.commit()
-    db.refresh(photo)
-    return {"id": photo.id, "photo_location": new_location}
+    async with async_session() as db:
+        photo = await db.get(QCPhoto, uuid.UUID(photo_id))
+        if not photo or str(photo.qc_packet_id) != packet_id:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        
+        vision = dict(photo.vision_result) if photo.vision_result else {}
+        vision["location"] = new_location
+        photo.vision_result = vision
+        db.add(photo)
+        await db.commit()
+        await db.refresh(photo)
+        return {"id": str(photo.id), "photo_location": new_location}
+
 
 @router.delete("/{packet_id}/photos/{photo_id}")
 async def delete_photo(
     packet_id: str,
     photo_id: str,
-    request: Request,
 ) -> dict[str, Any]:
-    """Delete a photo from the QC packet (file + DB record)."""
-    db = request.app.state.db
-    photo = db.query(QCPhoto).filter(
-        QCPhoto.id == photo_id,
-        QCPhoto.qc_packet_id == packet_id,
-    ).first()
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    
-    # Remove file from disk
-    if photo.file_path and os.path.exists(photo.file_path):
-        try:
-            os.remove(photo.file_path)
-        except Exception:
-            pass
-    
-    db.delete(photo)
-    db.commit()
-    return {"deleted": str(photo_id)}
+    """Delete a photo from the QC packet."""
+    async with async_session() as db:
+        photo = await db.get(QCPhoto, uuid.UUID(photo_id))
+        if not photo or str(photo.qc_packet_id) != packet_id:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        
+        if photo.file_path and os.path.exists(photo.file_path):
+            try:
+                os.remove(photo.file_path)
+            except Exception:
+                pass
+        
+        await db.delete(photo)
+        await db.commit()
+        return {"deleted": str(photo_id)}
 
 
 @router.get("/dataset/export")
