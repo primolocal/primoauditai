@@ -72,7 +72,7 @@ class OllamaVisionDetector:
     
     def __init__(self, model: str = None):
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.model = model or os.getenv("VISION_MODEL", "qwen3-vl:235b")
+        self.model = model or os.getenv("VISION_MODEL", "llama3.2-vision:11b")
     
     def analyze(self, image_path: str = None, image_bytes: bytes = None, filename: str = "unknown.jpg") -> dict:
         """Analyze a damage photo using Ollama vision model."""
@@ -84,16 +84,10 @@ class OllamaVisionDetector:
         else:
             return {"error": "No image provided", "detections": []}
 
-        prompt = """Analyze this car damage photo. Identify ALL damage types present:
-- dent
-- scratch
-- crack
-- broken/missing
-- corrosion/rust
-- no damage (if none visible)
-
-Return ONLY valid JSON with this exact format:
-{"detections": [{"category": "dent", "confidence": 0.92, "severity": "moderate", "location": "right front door"}]}"""
+        prompt = """Is there car damage in this photo? If yes, identify the type and location.
+Damage types: dent, scratch, crack, broken, rust/corrosion, none
+Return ONLY JSON in this format:
+{"damage": true, "type": "scratch", "location": "right front fender"}"""
 
         try:
             import httpx
@@ -118,17 +112,30 @@ Return ONLY valid JSON with this exact format:
             try:
                 analysis = json.loads(response_text)
             except json.JSONDecodeError:
-                match = re.search(r'\{[^{}]*"detections"[^{}]*\[.*?\][^{}]*\}', response_text, re.DOTALL)
+                import re
+                match = re.search(r'\{[^}]*\}', response_text)
                 if match:
                     analysis = json.loads(match.group(0))
                 else:
-                    analysis = {"detections": [], "error": "Could not parse response"}
+                    analysis = {"damage": False, "type": "unknown"}
+            
+            # Normalize to standard format
+            detections = []
+            if analysis.get("damage") and analysis.get("type") not in ("none", "unknown"):
+                detections.append({
+                    "category": analysis.get("type", "unknown"),
+                    "confidence": 0.85,
+                    "severity": "unknown",
+                    "location": analysis.get("location", "unknown"),
+                })
+            elif not analysis.get("damage"):
+                detections.append({"category": "no damage", "confidence": 0.9, "severity": "none", "location": "n/a"})
             
             return {
                 "filename": filename,
-                "detections": analysis.get("detections", []),
+                "detections": detections,
                 "model": self.model,
-                "total_damages": len([d for d in analysis.get("detections", []) if d.get("category") != "no damage"]),
+                "total_damages": len([d for d in detections if d.get("category") != "no damage"]),
             }
             
         except Exception as e:
