@@ -38,6 +38,7 @@ export default function QCPage() {
   const [odoPresent, setOdoPresent] = React.useState(false)
   const [damagePresent, setDamagePresent] = React.useState(false)
   const [emsZip, setEmsZip] = React.useState<File | null>(null)
+  const [imagePdf, setImagePdf] = React.useState<File | null>(null)
 
   React.useEffect(() => { loadPackets() }, [])
 
@@ -76,6 +77,7 @@ export default function QCPage() {
     form.append("odometer_photo_present", String(odoPresent))
     form.append("damage_photos_present", String(damagePresent))
     if (emsZip) form.append("ems_zip", emsZip)
+    if (imagePdf) form.append("image_pdf", imagePdf)
 
     try {
       const res = await fetch(api("/api/qc"), {
@@ -91,6 +93,7 @@ export default function QCPage() {
       setSuccess("QC packet created: " + data.findings_count + " findings")
       setEstimatePdf(null)
       setEmsZip(null)
+      setImagePdf(null)
       loadPackets()
     } catch (e: any) {
       setError(e.message)
@@ -115,6 +118,11 @@ export default function QCPage() {
           <div>
             <label className="mb-1 block text-xs text-[#8b949e]">Estimate PDF</label>
             <input type="file" accept=".pdf" required onChange={(e) => setEstimatePdf(e.target.files?.[0] || null)}
+              className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#8b949e]">Image PDF (optional — extracts + labels photos)</label>
+            <input type="file" accept=".pdf" onChange={(e) => setEstimatePdf(e.target.files?.[0] || null)}
               className="w-full rounded border border-[#30363d] bg-[#0d1117] px-3 py-2 text-sm text-[#c9d1d9] outline-none focus:border-[#58a6ff]" />
           </div>
           <div>
