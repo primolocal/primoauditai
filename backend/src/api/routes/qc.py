@@ -282,9 +282,12 @@ async def create_qc(
                 "id": str(uuid.uuid4()),
                 "filename": f"photo_{idx+1:03d}.jpg",
                 "photo_type": p.get("photo_type"),
+                "confidence": p.get("confidence", 0.0),
+                "photo_location": p.get("photo_location", "unknown"),
                 "width": p.get("width", 0),
                 "height": p.get("height", 0),
                 "page_num": p.get("page_num", 0),
+                "image_index": p.get("image_index", idx + 1),
                 "matched_lines": p.get("matched_lines", []),
                 "thumbnail": p.get("thumbnail_b64"),
             }
