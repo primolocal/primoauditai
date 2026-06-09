@@ -102,6 +102,12 @@ def run_qc_rules(
     # ── Tommy's Audit Brain ──
     findings.extend(_check_tommy_rules(parsed_lines, parsed_metadata))
 
+    # ── MOTOR Guide P-Page Rules ──
+    findings.extend(_check_motor_rules(parsed_lines, parsed_metadata))
+
+    # ── Supplement Documentation ──
+    findings.extend(_check_supplement_docs(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -1165,5 +1171,119 @@ def _check_tommy_rules(
             QCFinding(rule_id="ESCALATE_001", category="carrier", severity="high" if total > 15000 else "medium",
                 description=f"${total:,.0f} estimate — consider escalation. If unsure, contact supervisor before proceeding",
                 suggested_fix="Review findings. If uncertain, escalate to manager"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# MOTOR GUIDE P-PAGE RULES
+# ═══════════════════════════════════════════════════════════════════════
+
+# MOTOR included operations: (parent_keyword, child_keyword) — if parent is on estimate, child R&I is INCLUDED
+MOTOR_INCLUDED = [
+    ("hood", "insulator"), ("hood", "hinge"), ("cowl", "cowl grille"), ("cowl", "wiper arm"),
+    ("cowl", "wiper motor"), ("door", "belt molding"), ("door", "weatherstrip"), ("door", "mirror"),
+    ("door", "handle"), ("door", "lock"), ("door", "latch"), ("door", "regulator"),
+    ("door", "trim panel"), ("door", "door glass"), ("door", "run channel"),
+    ("bumper", "bracket"), ("bumper", "reinforcement"), ("bumper", "absorber"), ("bumper", "impact bar"),
+    ("fender", "liner"), ("fender", "splash shield"), ("roof", "headliner"), ("roof", "sunroof"),
+    ("roof", "roof rack"), ("roof", "antenna"), ("liftgate", "trim panel"), ("liftgate", "glass"),
+    ("liftgate", "wiper"), ("liftgate", "handle"), ("liftgate", "molding"), ("liftgate", "emblem"),
+    ("liftgate", "nameplate"), ("quarter", "trim panel"), ("quarter", "glass"), ("quarter", "molding"),
+    ("headlamp", "bracket"), ("headlamp", "mounting panel"), ("tail lamp", "bracket"),
+    ("deck lid", "trim panel"), ("deck lid", "lock"), ("deck lid", "emblem"), ("deck lid", "nameplate"),
+    ("deck lid", "spoiler"), ("radiator", "condenser"), ("radiator", "fan"),
+    ("frame", "crossmember"), ("frame", "body mount"),
+]
+
+def _check_motor_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+
+    # Build set of replace/repair parent panels
+    replace_panels: set[str] = set()
+    for line in parsed_lines:
+        op = (line.get("operation") or "").strip()
+        desc = (line.get("description") or "").lower()
+        panel = (line.get("panel_name") or "").lower()
+        if op == "Repl":
+            for kw in ["hood", "door", "bumper", "fender", "roof", "quarter", "deck", "trunk",
+                       "liftgate", "tail gate", "headlamp", "tail lamp", "radiator", "frame", "cowl"]:
+                if kw in desc or kw in panel:
+                    replace_panels.add(kw)
+
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        op = (line.get("operation") or "").strip()
+        desc = (line.get("description") or "").lower()
+        if op not in ("R&I",):
+            continue
+
+        # Check MOTOR included pairs
+        is_included = False
+        for parent_kw, child_kw in MOTOR_INCLUDED:
+            if child_kw in desc and parent_kw in replace_panels:
+                is_included = True
+                break
+
+        if is_included:
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="MOTOR_001", category="carrier", severity="medium",
+                    description=f"R&I of {line.get('description','')} may be included in parent operation per MOTOR P-pages",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Verify MOTOR P-pages — if R&I is included in parent op, remove separate charge"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SUPPLEMENT DOCUMENTATION RULES
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_supplement_docs(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    is_supp = meta.get("is_supplement", False)
+
+    # These rules apply to supplements AND originals (any estimate line can be flagged)
+    for line in parsed_lines:
+        if line.get("is_header"):
+            continue
+        desc = (line.get("description") or "").lower()
+        ln = line.get("line_no")
+        ln_int = int(ln) if ln and str(ln).isdigit() else 0
+
+        # ── Calibration requires invoice ──
+        if any(kw in desc for kw in ["calibration", "aim", "adas", "radar", "target"]):
+            price = float(line.get("part_price") or 0) + float(line.get("misc_amount") or 0)
+            if price > 0:
+                findings.append(
+                    QCFinding(rule_id="SUPP_002", category="carrier", severity="high",
+                        description=f"Calibration/ADAS on L{ln} (${price:.2f}) — supporting invoice required per carrier",
+                        line_numbers=[ln_int],
+                        suggested_fix="Attach calibration invoice or remove charge"))
+
+        # ── Scan > 0.5h or has dollar amount — invoice required ──
+        if "scan" in desc:
+            lh = float(line.get("labor_hours") or 0)
+            price = float(line.get("part_price") or 0) + float(line.get("misc_amount") or 0)
+            if lh > 0.5 or price > 0:
+                findings.append(
+                    QCFinding(rule_id="SUPP_003", category="carrier", severity="high",
+                        description=f"Scan charge on L{ln} — invoice/scan report required per carrier",
+                        line_numbers=[ln_int],
+                        suggested_fix="Attach scan report/invoice or reduce to 0.5h allowance"))
+
+        # ── Wheel alignment — invoice required ──
+        if any(kw in desc for kw in ["alignment", "align", "wheel align", "4 wheel align", "thrust align"]):
+            findings.append(
+                QCFinding(rule_id="SUPP_004", category="carrier", severity="high",
+                    description=f"Wheel alignment on L{ln} — invoice required per carrier",
+                    line_numbers=[ln_int],
+                    suggested_fix="Attach alignment invoice"))
 
     return findings

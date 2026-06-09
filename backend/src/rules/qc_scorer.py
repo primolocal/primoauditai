@@ -327,6 +327,12 @@ def calculate_carrier_confidence(
             else:
                 carrier_score -= 5
                 carrier_fails.append("Estimate may warrant escalation review")
+        elif rid == "MOTOR_001":
+            carrier_score -= 3
+            carrier_fails.append("R&I may be included in parent operation per MOTOR P-pages")
+        elif rid in ("SUPP_002", "SUPP_003", "SUPP_004"):
+            carrier_score -= 8
+            carrier_fails.append("Supplement charge requires invoice documentation")
         else:
             carrier_score -= 3
             carrier_fails.append(f.get("description", "Carrier compliance issue"))
