@@ -333,6 +333,20 @@ def calculate_carrier_confidence(
         elif rid in ("SUPP_002", "SUPP_003", "SUPP_004"):
             carrier_score -= 8
             carrier_fails.append("Supplement charge requires invoice documentation")
+        elif rid == "NATGEN_012":
+            carrier_score -= 5
+            carrier_fails.append("Large paint scope — verify refinish necessity")
+        elif rid in ("NATGEN_013", "NATGEN_014"):
+            carrier_score -= 10
+            auto_reject = True
+            carrier_fails.append("Prohibited charge — remove immediately per carrier guidelines")
+        elif rid == "NATGEN_015":
+            carrier_score -= 10
+            auto_reject = True
+            carrier_fails.append("LKQ suspension parts prohibited — use A/M or OEM")
+        elif rid == "NATGEN_020":
+            carrier_score -= 3
+            carrier_fails.append("Haz waste exceeds carrier cap")
         else:
             carrier_score -= 3
             carrier_fails.append(f.get("description", "Carrier compliance issue"))
