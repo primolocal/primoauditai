@@ -376,7 +376,6 @@ export default function QCDetailPage() {
                     other: "bg-gray-500/20 text-gray-400 border-gray-500/30",
                   }
                   return (
-                    <div key={p.id} className="group relative overflow-hidden rounded-xl border border-[#30363d] bg-[#161b22] shadow-lg transition-all hover:border-[#484f58] hover:shadow-xl"
                     <div key={p.id} className="group relative overflow-hidden rounded-xl border border-[#30363d] bg-[#161b22] shadow-lg transition-all hover:border-[#484f58] hover:shadow-xl">
                       {/* ── Thumbnail ── */}
                       <div className="relative aspect-square overflow-hidden bg-[#0d1117]">
@@ -393,9 +392,21 @@ export default function QCDetailPage() {
                             <span className="text-xs text-[#484f58]">No preview</span>
                           </div>
                         )}
-                        {/* Top-right: image dimensions */}
-                        <div className="absolute top-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-[#8b949e] backdrop-blur">
-                          {p.width}×{p.height}
+                        {/* Top-right: delete + size */}
+                        <div className="absolute top-1.5 right-1.5 flex items-center gap-1">
+                          <button
+                            onClick={async () => {
+                              if (!confirm("Remove this photo?")) return
+                              await fetch(`${API_URL}/api/qc/` + id + `/photos/` + p.id, { method: "DELETE", headers: { "X-API-Key": API_KEY } })
+                              await load()
+                            }}
+                            className="rounded bg-red-500/50 px-1.5 py-0.5 text-[9px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-500"
+                          >
+                            ✕
+                          </button>
+                          <span className="rounded bg-black/60 px-1.5 py-0.5 text-[9px] text-[#8b949e] backdrop-blur">
+                            {p.width}×{p.height}
+                          </span>
                         </div>
                       </div>
 

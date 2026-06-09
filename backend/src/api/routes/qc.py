@@ -565,6 +565,33 @@ async def update_photo_location(
     db.refresh(photo)
     return {"id": photo.id, "photo_location": new_location}
 
+@router.delete("/{packet_id}/photos/{photo_id}")
+async def delete_photo(
+    packet_id: str,
+    photo_id: str,
+    request: Request,
+) -> dict[str, Any]:
+    """Delete a photo from the QC packet (file + DB record)."""
+    db = request.app.state.db
+    photo = db.query(QCPhoto).filter(
+        QCPhoto.id == photo_id,
+        QCPhoto.qc_packet_id == packet_id,
+    ).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    
+    # Remove file from disk
+    if photo.file_path and os.path.exists(photo.file_path):
+        try:
+            os.remove(photo.file_path)
+        except Exception:
+            pass
+    
+    db.delete(photo)
+    db.commit()
+    return {"deleted": str(photo_id)}
+
+
 @router.get("/dataset/export")
 async def export_datasets(request: Request) -> dict[str, Any]:
     """Export all QC training datasets as downloadable JSON."""
