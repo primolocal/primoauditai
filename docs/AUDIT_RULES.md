@@ -1,180 +1,173 @@
-# PrimoAuditAI — QC Audit Rules Reference
+# PrimoAuditAI — Comprehensive Audit Rules Reference
 
-**Version:** v2.1 | **Generated:** June 9, 2026 | **Source:** `backend/src/rules/`
-
----
-
-## Overview
-
-**24 rules** across **6 categories** evaluate every estimate + photo packet. Each produces a finding with severity, description, and suggested fix.
-
-**Scoring:** 150 points total (25 per category). Pass threshold: **105/150** (~70%).
+**Version:** v3.0 | **Rules:** 40+ | **Scoring:** 200 points (8 categories × 25) | **Pass:** 140/200
 
 ---
 
 ## Rule Categories
 
-| Category | Rules | Points | Description |
-|----------|-------|--------|-------------|
-| **Photo Coverage** | PHOTOCOV_001–004 | 25 | VIN, odometer, and damage photos required |
-| **Estimate Completeness** | COMPLETE_001–010 | 25 | Deductible, shop info, insurance, VIN, vehicle info |
-| **State Compliance** | STATEQC_001–003 | 25 | State present, TX total loss threshold |
-| **Exception Verification** | EXCEP_001–003 | 25 | Supplement flags, manual entries, A/M parts |
-| **Line Item Analysis** | LINE_001–004 | 25 | Overlaps, labor hours, blends, LKQ parts |
-| **Financial Analysis** | FIN_001–002 | 25 | Paint materials, total vs ACV |
-| **Rate Verification** | TAX_001, LABOR_001 | Deductions | Tax rate and labor rate against reference data |
+| # | Category | Rules | Description |
+|---|----------|-------|-------------|
+| 1 | **Photo Coverage** | PHOTOCOV_001–007 | Photo presence, depth, and quality |
+| 2 | **Estimate Completeness** | COMPLETE_001–013 | All required metadata fields |
+| 3 | **State Compliance** | STATEQC_001–012 | State-specific laws + thresholds |
+| 4 | **Exception Handling** | EXCEP_001–005 | Flags, manual entries, A/M, supplements |
+| 5 | **Line Item Analysis** | LINE_001–005 | Overlaps, labor, blends, LKQ, CAPA |
+| 6 | **Financial Analysis** | FIN_001–004 | Paint materials, ACV, caps, sublets |
+| 7 | **Parts Sourcing** | PART_001–003 | Structural safety, OE pricing, LKQ warranty |
+| 8 | **Labor Analysis** | LABOR_001–003 | Paint ratio, zero-labor, misc charges |
+| 9 | **Rate Verification** | TAX_001, LABOR_001 | Tax + prevailing labor rate checks |
 
 ---
 
-## PHOTO COVERAGE RULES
+## 1. PHOTO COVERAGE (25 pts)
 
-### PHOTOCOV_001 — VIN Missing
-| Severity | 🔴 HIGH | **Auto-Reject** YES (−25 pts) |
-|----------|---------|-------------------------------|
-| **Trigger** | No VIN checkbox AND no photo classified as `vin` |
-| **Finding** | VIN photo required but not found in packet |
-| **Fix** | Upload VIN plate photo |
-
-### PHOTOCOV_002 — Odometer Missing
-| Severity | 🔴 HIGH | **Auto-Reject** YES (−25 pts) |
-|----------|---------|-------------------------------|
-| **Trigger** | No odometer checkbox AND no photo classified as `odometer` |
-| **Finding** | Odometer/mileage photo required but not found |
-| **Fix** | Upload dashboard photo showing mileage |
-
-### PHOTOCOV_003 — Damage Photos Missing
-| Severity | 🔴 HIGH | **Auto-Reject** YES (−25 pts) |
-|----------|---------|-------------------------------|
-| **Trigger** | Replace operations found on estimate, but no damage photos |
-| **Finding** | Replace operations found (N panels) but no damage photos |
-| **Fix** | Upload photos of damaged panels listed in estimate |
-
-### PHOTOCOV_004 — No Panel Operations Found
-| Severity | 🟢 LOW |
-|----------|--------|
-| **Trigger** | Damage photos present but no body/paint operations |
-| **Finding** | No body/paint operations found — verify damage photos show all impact areas |
+| Rule | Severity | Pts | Auto-Reject | Trigger |
+|------|----------|-----|:---:|---------|
+| PHOTOCOV_001 | 🔴 HIGH | −25 | ✓ | VIN photo missing |
+| PHOTOCOV_002 | 🔴 HIGH | −25 | ✓ | Odometer photo missing |
+| PHOTOCOV_003 | 🔴 HIGH | −25 | ✓ | Replace ops but no damage photos |
+| PHOTOCOV_004 | 🟢 LOW | — | — | No body operations found with damage photos |
+| PHOTOCOV_005 | 🟡 MEDIUM | −5 | — | License plate photo not detected |
+| PHOTOCOV_006 | 🟡 MEDIUM | −5 | — | Photo count below panel count |
+| PHOTOCOV_007 | 🟢 LOW | −3 | — | No overview/full-vehicle photo |
 
 ---
 
-## ESTIMATE COMPLETENESS RULES
+## 2. ESTIMATE COMPLETENESS (25 pts)
 
-| Rule | Severity | Points | Trigger | Fix |
-|------|----------|--------|---------|-----|
-| **COMPLETE_001** | 🟡 MEDIUM | −5 | Deductible not found | Verify deductible is listed |
-| **COMPLETE_004** | 🔴 HIGH | −5 | Insurance company missing | Verify insurance company name |
-| **COMPLETE_005** | 🟡 MEDIUM | −3 | License plate missing | Verify license plate present |
-| **COMPLETE_006** | 🟡 MEDIUM | −2 | Odometer missing | Verify odometer reading |
-| **COMPLETE_007** | 🔴 HIGH | −25* | Shop info missing (see supplement rules) | Provide shop name/address or Shop of Choice |
-| **COMPLETE_008** | 🔴 HIGH | −25* | Shop of Choice on supplement | Replace with actual facility name + address |
-| **COMPLETE_009** | 🔴 HIGH | — | Full 17-char VIN not recorded | Complete VIN required on every estimate |
-| **COMPLETE_010** | 🟡 MEDIUM | — | Year/make/model incomplete | Complete vehicle identification required |
-
-\* **Auto-Reject trigger**
+| Rule | Severity | Pts | Auto-Reject | Trigger |
+|------|----------|-----|:---:|---------|
+| COMPLETE_001 | 🟡 MEDIUM | −5 | — | Deductible missing |
+| COMPLETE_004 | 🔴 HIGH | −5 | — | Insurance company missing |
+| COMPLETE_005 | 🟡 MEDIUM | −3 | — | License plate missing |
+| COMPLETE_006 | 🟡 MEDIUM | −2 | — | Odometer missing |
+| COMPLETE_007 | 🔴 HIGH | −25 | ✓ | Shop info missing (see table) |
+| COMPLETE_008 | 🔴 HIGH | −25 | ✓ | Shop of Choice on supplement |
+| COMPLETE_009 | 🔴 HIGH | — | — | VIN not 17 characters |
+| COMPLETE_010 | 🟡 MEDIUM | — | — | Year/make/model incomplete |
+| COMPL_011 | 🟡 MEDIUM | — | — | Point of impact not recorded |
+| COMPL_012 | 🟢 LOW | — | — | Prior damage section empty |
+| COMPL_013 | 🟢 LOW | — | — | Production date not on estimate |
 
 ### Supplement vs Original — Shop Rules
 
-| Rule | Original | Supplement |
-|------|----------|------------|
-| COMPLETE_007 | Shop name OR Shop of Choice required | Full name + address required |
-| COMPLETE_008 | N/A (Shop of Choice OK) | Shop of Choice → **AUTO-REJECT** |
+| | Original | Supplement |
+|---|----------|------------|
+| Shop info | Name OR Shop of Choice OK | Full name + address required |
+| Shop of Choice | Allowed | **AUTO-REJECT** |
 
 ---
 
-## STATE COMPLIANCE RULES
+## 3. STATE COMPLIANCE (25 pts)
 
-| Rule | Severity | Points | Trigger | Fix |
-|------|----------|--------|---------|-----|
-| **STATEQC_001** | 🔴 HIGH | −8 | State not on estimate | Verify state in vehicle/insured section |
-| **STATEQC_003** | ⛔ CRITICAL | −9 | TX estimate ≥ 80% of ACV | Flag for total loss review |
-
----
-
-## EXCEPTION VERIFICATION RULES
-
-| Rule | Severity | Points | Trigger | Suppressed On |
-|------|----------|--------|---------|---------------|
-| **EXCEP_001** | 🟡 MEDIUM | −3 | Supplement flags (`**`, S01/S02) | Supplements |
-| **EXCEP_002** | 🟡 MEDIUM | −3 | Manual entries (`#` flag) | Supplements |
-| **EXCEP_003** | 🟡 MEDIUM | −8 | A/M or AF parts | Never |
+| Rule | State | Severity | Trigger |
+|------|-------|----------|---------|
+| STATEQC_001 | Any | 🔴 HIGH | State not indicated |
+| STATEQC_003 | TX | ⛔ CRITICAL | Estimate ≥ 80% of ACV |
+| STATEQC_010 | RI | ⛔ CRITICAL | Non-OE part on vehicle < 30 months |
+| STATEQC_011 | MN | 🟡 MEDIUM | Non-OE parts without written disclosure |
+| STATEQC_012 | WV | ⛔ CRITICAL | A/M structural part on vehicle < 3 years |
 
 ---
 
-## LINE ITEM ANALYSIS RULES 🆕
+## 4. EXCEPTION HANDLING (25 pts)
 
-### LINE_001 — Overlapping Operations
-| Severity | 🟡 MEDIUM | **Points** | −8 |
-|----------|-----------|------------|-----|
-| **Trigger** | Same panel has same operation more than once |
-| **Finding** | Potential overlapping operations: N line(s) |
-| **Fix** | Review duplicate entries — remove or document justification |
-
-### LINE_002 — Suspicious Labor Hours
-| Severity | 🟢 LOW | **Points** | −3 |
-|----------|--------|------------|-----|
-| **Trigger** | Labor hours < 50% of expected minimum for the panel |
-| **Minimums** | Hood ≥2h, Door ≥2h, Quarter ≥3h, Roof ≥4h, Bumper ≥1.5h |
-| **Fix** | Verify labor hours are correct for the listed operation |
-
-### LINE_003 — Missing Blend Panel
-| Severity | 🟢 LOW | **Points** | −3 |
-|----------|--------|------------|-----|
-| **Trigger** | Painted panel has adjacent panel present in estimate but not painted |
-| **Adjacent pairs** | hood→fender, fender→door, door→quarter, quarter→roof, bumper→hood, etc. |
-| **Fix** | Check adjacent panel for required blend/clear coat |
-
-### LINE_004 — LKQ Parts Notation
-| Severity | 🟢 LOW | **Points** | −2 |
-|----------|--------|------------|-----|
-| **Trigger** | LKQ/USED/REC/REM part types present |
-| **Fix** | Document LKQ part mileage, age, and warranty terms |
+| Rule | Severity | Pts | Suppressed On | Trigger |
+|------|----------|-----|---------------|---------|
+| EXCEP_001 | 🟡 MEDIUM | −3 | Supplements | Supplement flags (`**`, S01/S02) |
+| EXCEP_002 | 🟡 MEDIUM | −3 | Supplements | Manual entries (`#` flag) |
+| EXCEP_003 | 🟡 MEDIUM | −8 | Never | A/M or AF parts |
+| EXCEP_004 | 🟢 LOW | — | Never | Supplement # > 3 |
+| EXCEP_005 | 🟢 LOW | −2 | — | Multiple flag types on same line |
 
 ---
 
-## FINANCIAL ANALYSIS RULES 🆕
+## 5. LINE ITEM ANALYSIS (25 pts)
 
-### FIN_001 — Paint Materials Check
-| Severity | 🟡 MEDIUM | **Points** | −5 |
-|----------|-----------|------------|-----|
-| **Trigger** | Paint labor hours present but no paint material line item |
-| **Fix** | Add paint material line item (typically 30-35% of paint labor) |
-
-### FIN_002 — Estimate vs ACV
-| Severity | 🔴 HIGH (≥90%) / 🟡 MEDIUM (≥75%) | **Points** | −12 / −5 |
-|----------|-------------------------------------|------------|-----------|
-| **Trigger** | Estimate total ≥ 75% of ACV |
-| **Fix** | ≥90%: Flag for total loss evaluation. ≥75%: Monitor for supplement creep |
+| Rule | Severity | Pts | Trigger |
+|------|----------|-----|---------|
+| LINE_001 | 🟡 MEDIUM | −8 | Same panel + operation duplicates |
+| LINE_002 | 🟢 LOW | −3 | Labor hours < 50% of expected minimum |
+| LINE_003 | 🟢 LOW | −3 | Painted panel missing blend on adjacent |
+| LINE_004 | 🟢 LOW | −2 | LKQ/USED parts without age/warranty notation |
+| LINE_005 | 🟡 MEDIUM | −5 | A/M parts without CAPA certification |
 
 ---
 
-## RATE VERIFICATION
+## 6. FINANCIAL ANALYSIS (25 pts)
 
-| Rule | Severity | Trigger | Fix |
-|------|----------|---------|-----|
-| **TAX_001** | 🔴 HIGH | Tax rate differs >0.5% from reference | Verify correct rate for state/ZIP |
-| **LABOR_001** | 🔴 HIGH | Labor rate >15% above prevailing | Verify rate for state/ZIP |
+| Rule | Severity | Pts | Trigger |
+|------|----------|-----|---------|
+| FIN_001 | 🟡 MEDIUM | −5 | Paint labor present but no materials line |
+| FIN_002 | 🔴/🟡 | −12/−5 | Estimate ≥ 90%/75% of ACV |
+| FIN_003 | 🟡 MEDIUM | −5 | Paint materials > 38% of paint labor |
+| FIN_004 | 🟢 LOW | −3 | Sublet operations without invoice |
+
+---
+
+## 7. PARTS SOURCING (25 pts)
+
+| Rule | Severity | Pts | Auto-Reject | Trigger |
+|------|----------|-----|:---:|---------|
+| PART_001 | ⛔ CRITICAL | −25 | ✓ | A/M part on structural/safety component |
+| PART_002 | 🟡 MEDIUM | −3 | — | High-value OE parts (>$2,000) |
+| PART_003 | 🟢 LOW | −2 | — | LKQ/used parts without warranty notation |
+
+**Structural panels flagged by PART_001:** frame rail, radiator support, apron, upper/lower rail, inner quarter, rocker panel, B-pillar, A-pillar, cowl, floor pan, firewall, rear body panel, crossmember
+
+---
+
+## 8. LABOR ANALYSIS (25 pts)
+
+| Rule | Severity | Pts | Auto-Reject | Trigger |
+|------|----------|-----|:---:|---------|
+| LABOR_001 | 🟡 MEDIUM | −5 | — | Paint hours > 3× body hours |
+| LABOR_002 | 🔴 HIGH | −12 | ✓ | Zero labor hours on Replace line |
+| LABOR_003 | 🟢 LOW | −3 | — | Unitemized/miscellaneous charges |
+
+---
+
+## RATE VERIFICATION (deductions)
+
+| Rule | Severity | Trigger |
+|------|----------|---------|
+| TAX_001 | 🔴 HIGH | Tax rate differs >0.5% from reference |
+| LABOR_001 | 🔴 HIGH | Labor rate >15% above prevailing |
 
 ---
 
 ## SCORING MODEL
 
-| Score | Status | Auditor Note |
-|-------|--------|-------------|
-| **128–150** | ✅ Pass | All checks passed. Estimate is complete and compliant. |
-| **105–127** | ⚠️ Conditional | Conditional pass. Minor exceptions: review flagged items. |
-| **0–104** | ❌ Fail | Not ready. Critical issues must be corrected before resubmission. |
+| Score | Status |
+|-------|--------|
+| **170–200** | ✅ Clean pass — ready for carrier |
+| **140–169** | ⚠️ Conditional pass — minor exceptions |
+| **0–139** | ❌ Not ready — critical issues |
 
-**Auto-reject triggers (instant fail):**
-- VIN photo missing (PHOTOCOV_001)
-- Odometer photo missing (PHOTOCOV_002)
-- Damage photos missing (PHOTOCOV_003)
-- Shop info missing on supplement (COMPLETE_007, supplement)
-- Shop of Choice on supplement (COMPLETE_008)
-- Shop info missing on original (COMPLETE_007, original)
+### Auto-Reject Triggers (instant fail)
+1. VIN photo missing
+2. Odometer photo missing  
+3. Damage photos missing (with Replace ops)
+4. Shop info missing (supplement: full info; original: none)
+5. Shop of Choice on supplement
+6. A/M structural/safety parts
+7. Zero labor hours on Replace line
 
 ---
 
-## REFERENCE DATA QUICK LOOKUP
+## STATE-SPECIFIC RULES
+
+| State | Rule | Requirement |
+|-------|------|-------------|
+| **TX** | STATEQC_003 | Total loss threshold at 80% of ACV |
+| **RI** | STATEQC_010 | OE parts required on vehicles < 30 months |
+| **MN** | STATEQC_011 | Written disclosure required for non-OE parts |
+| **WV** | STATEQC_012 | OE required for structural parts on vehicles < 3 years |
+
+---
+
+## REFERENCE DATA
 
 ### Labor Rates (prevailing)
 | State | Default/hr | Major Metro |
@@ -210,4 +203,4 @@
 
 ---
 
-*Rules: `src/rules/qc_rules.py` · Scorer: `src/rules/qc_scorer.py` · Reference: `src/rules/reference_data.py`*
+*Source: `backend/src/rules/qc_rules.py` · `backend/src/rules/qc_scorer.py` · `backend/src/rules/reference_data.py`*
