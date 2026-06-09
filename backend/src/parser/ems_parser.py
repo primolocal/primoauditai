@@ -4,6 +4,11 @@ Opens EMS ZIP files, parses DBF tables, extracts structured metadata.
 Eliminates all PDF extraction issues by reading data directly from CCC.
 """
 
+class EmsParser:
+    """Backward-compatible wrapper for EMS ZIP parsing."""
+    def parse(self, zip_file) -> dict:
+        return parse_ems_zip(zip_file)
+
 import struct
 import zipfile
 from typing import Any
