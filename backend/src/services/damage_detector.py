@@ -58,10 +58,24 @@ class GeminiVisionDetector(BaseDamageDetector):
             return MockDamageDetector().analyze(image_bytes, filename)
 
         image_b64 = base64.b64encode(image_bytes).decode()
+        prompt = (
+            "Analyze this auto insurance photo. Return ONLY valid JSON (no markdown, no explanation):\n"
+            "{\n"
+            '  "part": "specific vehicle component visible (hood, fender, door, bumper, windshield, wheel, dashboard, VIN plate, odometer, license plate, etc.)",\n'
+            '  "damage": true/false,\n'
+            '  "damage_type": "dent|scratch|crack|rust|corrosion|tear|missing|broken|bent|none",\n'
+            '  "location_on_vehicle": "left front, right rear, center, etc.",\n'
+            '  "severity": "minor|moderate|severe|none",\n'
+            '  "repair_suggestion": "replace|repair|pdr|no action",\n'
+            '  "confidence": 0.0-1.0\n'
+            "}\n"
+            "Look carefully at the image. Identify the EXACT vehicle part shown. "
+            "Check for ANY damage, rust, corrosion, scratches, dents, cracks, missing parts, or discoloration."
+        )
         payload = {
             "contents": [{
                 "parts": [
-                    {"text": "Classify car damage. Return ONLY JSON: {\"damage\": true/false, \"type\": \"dent|scratch|crack|rust|none|other\", \"location\": \"panel name\", \"confidence\": 0-1}"},
+                    {"text": prompt},
                     {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}}
                 ]
             }],
@@ -73,13 +87,28 @@ class GeminiVisionDetector(BaseDamageDetector):
             r.raise_for_status()
             data = r.json()
             text = data["candidates"][0]["content"]["parts"][0]["text"]
+            # Strip markdown code fences if present
+            text = text.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+                if text.endswith("```"):
+                    text = text[:-3]
             result = json.loads(text)
             return {
                 "damage": result.get("damage", True),
-                "type": result.get("type", "other"),
-                "location": result.get("location", filename),
+                "type": result.get("damage_type", result.get("type", "other")),
+                "location": result.get("part", result.get("location", filename)),
+                "location_detail": result.get("location_on_vehicle", ""),
+                "severity": result.get("severity", "moderate"),
+                "repair": result.get("repair_suggestion", "repair"),
                 "confidence": result.get("confidence", 0.5),
-                "detections": [{"category": result.get("type", "other"), "confidence": result.get("confidence", 0.5), "location": result.get("location", filename)}],
+                "detections": [{
+                    "category": result.get("damage_type", result.get("type", "other")),
+                    "confidence": result.get("confidence", 0.5),
+                    "location": result.get("part", result.get("location", filename)),
+                    "severity": result.get("severity", "moderate"),
+                    "repair": result.get("repair_suggestion", "repair"),
+                }],
             }
         except Exception:
             return MockDamageDetector().analyze(image_bytes, filename)

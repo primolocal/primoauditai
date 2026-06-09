@@ -106,6 +106,21 @@ async def create_qc(
                 ptype = vision_result.get("type", "damage") if vision_result.get("damage") else "other"
                 confidence = round(vision_result.get("confidence", 0.5), 2)
                 location = vision_result.get("location", "unknown")
+                severity = vision_result.get("severity", "moderate")
+                repair = vision_result.get("repair", "repair")
+                location_detail = vision_result.get("location_detail", "")
+                
+                # Save full vision result including part identification & severity
+                full_vision = {
+                    "damage": vision_result.get("damage", True),
+                    "type": ptype,
+                    "confidence": confidence,
+                    "location": location,
+                    "severity": severity,
+                    "repair": repair,
+                    "location_detail": location_detail,
+                    "detections": vision_result.get("detections", []),
+                }
                 
                 # Match to estimate line using vision-detected location + panel keywords
                 matched_lines: list[int] = []
@@ -268,10 +283,13 @@ async def create_qc(
                 photo_type=p.get("photo_type"),
                 photo_type_confidence=p.get("confidence", 0.0),
                 vision_result={
-                    "damage": p.get("photo_type") in ("damage", "dent", "scratch", "crack", "rust", "glass", "tire"),
+                    "damage": p.get("photo_type") in ("damage", "dent", "scratch", "crack", "rust", "glass", "tire", "corrosion"),
                     "type": p.get("photo_type"),
                     "confidence": p.get("confidence", 0.0),
                     "location": p.get("photo_location", "unknown"),
+                    "severity": p.get("severity", "moderate"),
+                    "repair": p.get("repair", "repair"),
+                    "location_detail": p.get("location_detail", ""),
                     "matched_lines": p.get("matched_lines", []),
                 },
             ))
@@ -587,6 +605,78 @@ async def delete_photo(
         await db.delete(photo)
         await db.commit()
         return {"deleted": str(photo_id)}
+
+
+
+@router.post("/train/feedback")
+async def save_training_feedback(
+    request: Request,
+) -> dict[str, Any]:
+    """Save human-corrected photo labels as training data for model improvement."""
+    body = await request.json()
+    photo_id = body.get("photo_id", "")
+    original_type = body.get("original_type", "")
+    corrected_type = body.get("corrected_type", "")
+    original_location = body.get("original_location", "")
+    corrected_location = body.get("corrected_location", "")
+    
+    if not photo_id:
+        raise HTTPException(status_code=400, detail="photo_id required")
+    
+    async with async_session() as db:
+        result = await db.execute(select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id)))
+        photo = result.scalar_one_or_none()
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        
+        # Store correction in vision_result JSON for learning
+        vision = dict(photo.vision_result) if photo.vision_result else {}
+        corrections = vision.get("human_corrections", [])
+        corrections.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "original_type": original_type,
+            "corrected_type": corrected_type,
+            "original_location": original_location,
+            "corrected_location": corrected_location,
+        })
+        vision["human_corrections"] = corrections
+        photo.vision_result = vision
+        await db.commit()
+        
+        return {"status": "saved", "correction_count": len(corrections)}
+
+
+@router.get("/train/export")
+async def export_training_labels(request: Request) -> dict[str, Any]:
+    """Export all human-corrected labels as training data for model fine-tuning."""
+    async with async_session() as db:
+        result = await db.execute(
+            select(QCPhoto).filter(QCPhoto.vision_result.isnot(None))
+        )
+        photos = result.scalars().all()
+    
+    training_data = []
+    for p in photos:
+        vision = p.vision_result or {}
+        corrections = vision.get("human_corrections", [])
+        if corrections:
+            # Get the original AI label
+            original = {
+                "photo_id": str(p.id),
+                "ai_type": vision.get("type", p.photo_type),
+                "ai_location": vision.get("location", "unknown"),
+                "corrected_type": corrections[-1].get("corrected_type", p.photo_type),
+                "corrected_location": corrections[-1].get("corrected_location", vision.get("location", "unknown")),
+                "correction_count": len(corrections),
+            }
+            training_data.append(original)
+    
+    return {
+        "total": len(training_data),
+        "training_samples": training_data,
+        "format": "supervised — ai_label → human_corrected_label",
+        "use_for": "Fine-tune Gemini prompts or train YOLOv11m custom model",
+    }
 
 
 @router.get("/dataset/export")

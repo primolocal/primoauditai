@@ -445,6 +445,11 @@ export default function QCDetailPage() {
                                 headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
                                 body: JSON.stringify({ photo_location: newLoc }),
                               })
+                              fetch(`${API_URL}/api/qc/train/feedback`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+                                body: JSON.stringify({ photo_id: p.id, original_location: p.photo_location, corrected_location: newLoc }),
+                              })
                               await load()
                             }}
                             className="w-full border-b border-dashed border-[#30363d] bg-transparent py-0.5 text-[10px] text-[#8b949e] outline-none focus:border-[#58a6ff] focus:text-[#c9d1d9]"
