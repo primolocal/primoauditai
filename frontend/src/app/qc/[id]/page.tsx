@@ -59,9 +59,12 @@ interface Photo {
   id: string
   filename: string
   photo_type?: string
+  photo_location?: string
+  confidence?: number
   width: number
   height: number
   page_num: number
+  image_index?: number
   matched_lines?: number[]
   thumbnail?: string
 }
@@ -379,7 +382,25 @@ export default function QCDetailPage() {
                       ) : (
                         <div className="mb-2 flex h-32 items-center justify-center rounded bg-[#21262d] text-xs text-[#484f58]">No preview</div>
                       )}
-                      <div className="flex items-center justify-between">
+                      {/* AI Analysis Info */}
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className={"rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide " + (typeBadge[p.photo_type || "other"] || typeBadge.other)}>
+                          {p.photo_type || "other"}
+                        </span>
+                        {p.confidence != null && (
+                          <div className="flex items-center gap-1">
+                            <div className="h-1.5 w-16 rounded-full bg-[#21262d] overflow-hidden">
+                              <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.round(p.confidence * 100)}%` }} />
+                            </div>
+                            <span className="text-[10px] text-[#8b949e]">{Math.round(p.confidence * 100)}%</span>
+                          </div>
+                        )}
+                      </div>
+                      {p.photo_location && (
+                        <div className="mb-1.5 text-[10px] text-[#8b949e]">📍 {p.photo_location}</div>
+                      )}
+                      {/* Controls */}
+                      <div className="flex items-center justify-between gap-1 border-t border-[#21262d] pt-1.5">
                         <select
                           value={p.photo_type || "other"}
                           onChange={async (e) => {
@@ -391,21 +412,27 @@ export default function QCDetailPage() {
                             })
                             await load()
                           }}
-                          className="rounded border border-[#30363d] bg-[#0d1117] px-1 py-0.5 text-[10px] text-[#c9d1d9]"
+                          className="w-full rounded border border-[#30363d] bg-[#0d1117] px-1 py-0.5 text-[10px] text-[#c9d1d9]"
                         >
                           {[
+                            { value: "other", label: "Other" },
                             { value: "vin", label: "VIN" },
                             { value: "odometer", label: "Odometer" },
                             { value: "damage", label: "Damage" },
-                            { value: "other", label: "Other" },
+                            { value: "dent", label: "Dent" },
+                            { value: "scratch", label: "Scratch" },
+                            { value: "crack", label: "Crack" },
+                            { value: "rust", label: "Rust/Corrosion" },
+                            { value: "glass", label: "Glass" },
+                            { value: "tire", label: "Tire" },
                           ].map((opt) => (
                             <option key={opt.value} value={opt.value}>{opt.label}</option>
                           ))}
                         </select>
-                        {p.matched_lines && p.matched_lines.length > 0 && (
-                          <span className="text-[10px] text-[#58a6ff] font-mono">L{p.matched_lines.join(", ")}</span>
-                        )}
                       </div>
+                      {p.matched_lines && p.matched_lines.length > 0 && (
+                        <div className="mt-1 text-[10px] text-[#58a6ff] font-mono">Lines: {p.matched_lines.join(", ")}</div>
+                      )}
                     </div>
                   )
                 })}
