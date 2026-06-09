@@ -225,7 +225,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
         )}
       </div>
 
-      
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
         <div>
           <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({packet.findings_count})</h2>
@@ -312,8 +311,6 @@ export default function QCDetailPage({ params }: { params: { id: string } }) {
           </div>
         </div>
       </div>
-    </div>
-      )}
     </div>
   )
 }
