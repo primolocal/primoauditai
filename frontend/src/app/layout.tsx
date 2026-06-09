@@ -3,8 +3,8 @@
 import { Inter } from "next/font/google"
 import { usePathname } from "next/navigation"
 import "./globals.css"
-import { Sidebar } from "@/components/shell/sidebar"
-import { Topbar } from "@/components/shell/topbar"
+import { Sidebar } from "../components/shell/sidebar"
+import { Topbar } from "../components/shell/topbar"
 
 const inter = Inter({ subsets: ["latin"] })
 

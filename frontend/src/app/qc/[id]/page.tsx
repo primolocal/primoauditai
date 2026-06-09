@@ -189,8 +189,7 @@ export default function QCDetailPage() {
       lines.push(`Rejection Reasons:`, ...packet.rejection_reasons.map(r => `  - ${r}`))
     }
     if (packet.auditor_note) lines.push(`Note: ${packet.auditor_note}`)
-    return lines.join("
-")
+    return lines.join(" | ")
   }
 
   React.useEffect(() => { load() }, [id])

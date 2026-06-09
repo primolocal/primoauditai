@@ -12,7 +12,7 @@ import {
   Shield,
   ClipboardCheck,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { cn } from "../../lib/utils"
 
 const navItems = [
   { href: "/", label: "Upload", icon: Upload },
