@@ -17,6 +17,22 @@ router = APIRouter(prefix="/api/vision", tags=["vision"])
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 VISION_MODEL = os.getenv("VISION_MODEL", "qwen3-vl:235b")
 
+
+def get_detector_info() -> dict[str, Any]:
+    from src.services.damage_detector import detector
+    name = type(detector).__name__
+    return {
+        "detector_type": name,
+        "is_real": name not in ("MockDamageDetector",),
+        "is_gemini": "Gemini" in name,
+        "is_ollama": "Ollama" in name,
+        "is_mock": "Mock" in name,
+        "ollama_host_set": bool(os.getenv("OLLAMA_HOST", "")),
+        "gemini_api_key_set": bool(os.getenv("GEMINI_API_KEY", "")),
+        "vision_model_env": os.getenv("VISION_MODEL", "default: llama3.2-vision:11b"),
+    }
+
+
 DAMAGE_CATEGORIES = ["dent", "scratch", "crack", "broken/missing", "corrosion/rust", "no damage"]
 
 
