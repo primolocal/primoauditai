@@ -114,6 +114,9 @@ def run_qc_rules(
     # ── Correlation Rules (glass/bumper/suspension/emblem/markup) ──
     findings.extend(_check_correlation_rules(parsed_lines, parsed_metadata))
 
+    # ── Final Batch: core audit rules from v1 ──
+    findings.extend(_check_final_rules(parsed_lines, parsed_metadata))
+
     return [f.to_dict() for f in findings if f.applies]
 
 
@@ -1456,5 +1459,142 @@ def _check_correlation_rules(
                             description=f"Part price ${price:.0f} appears above typical range for {panel} — verify against invoice",
                             line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
                             suggested_fix="Verify part price against dealer invoice or list price. Document if verified"))
+
+    return findings
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# FINAL BATCH — all remaining v1 production rules
+# ═══════════════════════════════════════════════════════════════════════
+
+def _check_final_rules(
+    parsed_lines: list[dict[str, Any]], meta: dict[str, Any]
+) -> list[QCFinding]:
+    findings: list[QCFinding] = []
+    is_supp = meta.get("is_supplement", False)
+    total = float(meta.get("total_estimate") or 0)
+
+    # ── AUDIT_007: Negative labor (not legitimate overlap/deduction) ──
+    legit_neg = ["overlap", "deduction", "deduct", "discount", "reduction",
+                 "credit", "less", "adjustment", "adj", "negotiated"]
+    for line in parsed_lines:
+        lh = float(line.get("labor_hours") or 0)
+        desc = (line.get("description") or "").lower()
+        price = float(line.get("part_price") or 0)
+        if lh < 0 or (lh == 0 and price < 0 and abs(price) >= 25):
+            if any(kw in desc for kw in legit_neg):
+                continue
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="AUDIT_007", category="labor", severity="high",
+                    description=f"Unexplained negative labor on L{ln} (${price:.2f} / {lh}h) — not a standard deduction",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="If legitimate overlap/discount: document. Otherwise: reject and correct"))
+
+    # ── AUDIT_008: Labor $ without hours ──
+    flat_rate = ["prime and block", "clear bra", "mud guard", "transport",
+                 "corrosion protection", "safety inspection", "denib", "tint",
+                 "polish", "buff", "detail", "wash", "clean", "mask", "cover car",
+                 "flex additive", "haz", "waste", "supply", "shop supply", "material", "sundries"]
+    for line in parsed_lines:
+        lh = float(line.get("labor_hours") or 0)
+        price = float(line.get("part_price") or 0)
+        desc = (line.get("description") or "").lower()
+        if price > 0 and lh == 0 and "scan" not in desc and not any(kw in desc for kw in flat_rate):
+            if price >= 100:
+                ln = line.get("line_no")
+                findings.append(
+                    QCFinding(rule_id="AUDIT_008", category="labor", severity="high",
+                        description=f"Labor ${price:.2f} billed without hours on L{ln} — {line.get('description','')[:50]}",
+                        line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                        suggested_fix="If hourly labor: add hours. If flat-rate: ignore"))
+
+    # ── AUDIT_009: Zero-price part ──
+    for line in parsed_lines:
+        pn = line.get("part_number") or ""
+        price = float(line.get("part_price") or 0)
+        misc = float(line.get("misc_amount") or 0) if "misc_amount" in str(line) else 0
+        if pn and price == 0 and misc == 0:
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="AUDIT_009", category="parts", severity="low",
+                    description=f"Part #{pn} on L{ln} has $0.00 price — verify if manually overridden",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Review justification for zero-price part entry"))
+
+    # ── AUDIT_010: Mechanical labor on cosmetic file ──
+    has_mech = any(
+        float(line.get("labor_hours") or 0) > 0 and 
+        any(kw in (line.get("description") or "").lower() for kw in 
+            ["mechanical", "diagnostic", "diag", "engine", "transmission", "suspension",
+             "steering", "brake", "exhaust", "driveline", "differential", "transfer case"])
+        for line in parsed_lines
+    )
+    has_structural = any(
+        any(kw in (line.get("description") or "").lower() for kw in ["frame", "rail", "apron", "pillar"])
+        for line in parsed_lines
+    )
+    if has_mech and not has_structural:
+        findings.append(
+            QCFinding(rule_id="AUDIT_010", category="labor", severity="medium",
+                description="Mechanical/diagnostic labor detected on cosmetic estimate (no structural damage)",
+                suggested_fix="Confirm mechanical operations are tied to direct collision impact"))
+
+    # ── NATGEN_022: Total loss — write 100% of damages ──
+    if total > 10000:
+        findings.append(
+            QCFinding(rule_id="NATGEN_022", category="carrier", severity="medium",
+                description=f"${total:,.0f} estimate — write 100% of damages per carrier guidelines. Do not stop at total loss threshold",
+                suggested_fix="Ensure all damages are documented completely. Do not omit damages because threshold is near"))
+
+    # ── NATGEN_010: Sublet documentation required ──
+    for line in parsed_lines:
+        desc = (line.get("description") or "").lower()
+        price = float(line.get("part_price") or 0)
+        if (any(kw in desc for kw in ["sublet", "subl", "tow", "storage"]) or 
+            line.get("operation") == "SUBLET") and price > 0:
+            ln = line.get("line_no")
+            findings.append(
+                QCFinding(rule_id="NATGEN_010", category="carrier", severity="high",
+                    description=f"Sublet charge ${price:.2f} on L{ln} requires supporting invoice per carrier",
+                    line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                    suggested_fix="Attach supporting invoice. Dealer mechanical invoices must be itemized by operation"))
+
+    # ── SUPP_005: Sublet on supplement → invoice required ──
+    if is_supp:
+        for line in parsed_lines:
+            desc = (line.get("description") or "").lower()
+            price = float(line.get("part_price") or 0)
+            is_sublet = any(kw in desc for kw in ["sublet", "subl", "tow", "storage", "glass",
+                                                   "alignment", "align", "calibration", "scan",
+                                                   "pdr", "dent", "hail"])
+            if is_sublet and price > 0:
+                ln = line.get("line_no")
+                findings.append(
+                    QCFinding(rule_id="SUPP_005", category="carrier", severity="high",
+                        description=f"Sublet on supplement L{ln} (${price:.2f}) — invoice required per carrier",
+                        line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                        suggested_fix="Attach supporting invoice. Without documentation, carrier will remove the charge"))
+
+    # ── HAIL_002: Hail windshield causation ──
+    has_hail = any("hail" in (line.get("description") or "").lower() for line in parsed_lines)
+    if has_hail:
+        for line in parsed_lines:
+            desc = (line.get("description") or "").lower()
+            op = (line.get("operation") or "").strip()
+            if ("windshield" in desc or "glass" in desc) and op == "Repl":
+                ln = line.get("line_no")
+                findings.append(
+                    QCFinding(rule_id="HAIL_002", category="carrier", severity="high",
+                        description=f"Windshield replacement on hail claim L{ln} — verify hail directly caused break (rock chips don't qualify)",
+                        line_numbers=[int(ln)] if ln and str(ln).isdigit() else [],
+                        suggested_fix="Verify windshield break in hail photos. If rock chip, remove or document as unrelated"))
+
+    # ── CHECK_004: Production date ──
+    if not meta.get("production_date"):
+        findings.append(
+            QCFinding(rule_id="CHECK_004", category="completeness", severity="low",
+                description="Vehicle production date not on estimate — needed for parts compatibility",
+                suggested_fix="Include vehicle build/production date for correct parts selection"))
 
     return findings

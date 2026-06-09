@@ -266,6 +266,9 @@ def calculate_carrier_confidence(
         elif rid == "PART_003":
             parts_score -= 2
             parts_fails.append("LKQ parts without warranty notation")
+        elif rid == "AUDIT_009":
+            parts_score -= 2
+            parts_fails.append("Zero-price part — verify override")
         else:
             parts_score -= 3
             parts_fails.append(f.get("description", "Parts issue"))
@@ -293,6 +296,16 @@ def calculate_carrier_confidence(
         elif rid == "SUSP_001":
             labor_score -= 5
             labor_fails.append("Suspension work — alignment required")
+        elif rid == "AUDIT_007":
+            labor_score -= 12
+            auto_reject = True
+            labor_fails.append("Unexplained negative labor — billing error")
+        elif rid == "AUDIT_008":
+            labor_score -= 8
+            labor_fails.append("Labor dollar amount without hours — suspicious")
+        elif rid == "AUDIT_010":
+            labor_score -= 3
+            labor_fails.append("Mechanical labor on cosmetic estimate — verify")
         else:
             labor_score -= 3
             labor_fails.append(f.get("description", "Labor issue"))
@@ -378,6 +391,18 @@ def calculate_carrier_confidence(
         elif rid == "EMBLEM_001":
             carrier_score -= 2
             carrier_fails.append("Emblem R&I may be included in panel replacement")
+        elif rid == "NATGEN_022":
+            carrier_score -= 3
+            carrier_fails.append("Total loss — write 100% of damages")
+        elif rid == "NATGEN_010":
+            carrier_score -= 8
+            carrier_fails.append("Sublet charge requires invoice documentation")
+        elif rid == "SUPP_005":
+            carrier_score -= 8
+            carrier_fails.append("Sublet on supplement — invoice required")
+        elif rid == "HAIL_002":
+            carrier_score -= 8
+            carrier_fails.append("Hail windshield causation — verify hail caused break")
         elif rid == "MARKUP_001":
             carrier_score -= 3
             carrier_fails.append("Part price markup detected — verify")
