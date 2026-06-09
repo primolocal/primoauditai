@@ -1495,7 +1495,10 @@ def _check_final_rules(
     flat_rate = ["prime and block", "clear bra", "mud guard", "transport",
                  "corrosion protection", "safety inspection", "denib", "tint",
                  "polish", "buff", "detail", "wash", "clean", "mask", "cover car",
-                 "flex additive", "haz", "waste", "supply", "shop supply", "material", "sundries"]
+                 "flex additive", "haz", "waste", "supply", "shop supply", "material", "sundries",
+                 "rotor", "brake pad", "brake pads", "drum", "caliper", "wheel cylinder",
+                 "sensor", "switch", "bulb", "lamp assy", "wiper blade", "filter",
+                 "belt", "hose", "clamp", "clip", "retainer", "fastener", "cap", "plug"]
     for line in parsed_lines:
         lh = float(line.get("labor_hours") or 0)
         price = float(line.get("part_price") or 0)
