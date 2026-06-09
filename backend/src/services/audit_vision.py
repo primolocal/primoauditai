@@ -1,3 +1,4 @@
+import base64
 """
 Damage Photo Analysis — plugs into the audit workflow.
 Prototype: uses MockDamageDetector (simulated CarDD output).
@@ -11,7 +12,7 @@ To pull the vision model when Ollama Cloud session resets:
 
 from typing import Any
 
-from src.services.damage_detector import detector as mock_detector
+from src.services.damage_detector import detector as damage_detector
 
 
 def analyze_damage_photos(
@@ -27,7 +28,13 @@ def analyze_damage_photos(
 
     for photo in photos:
         filename = photo.get("filename", "unknown.jpg")
-        result = mock_detector.analyze(filename)
+        # Extract bytes from data_url if present
+        image_bytes = b""
+        data_url = photo.get("data_url", "")
+        if data_url.startswith("data:image"):
+            b64_part = data_url.split(",", 1)[1] if "," in data_url else ""
+            image_bytes = base64.b64decode(b64_part) if b64_part else b""
+        result = damage_detector.analyze(image_bytes or b"", filename)
         photo_analyses.append(result)
 
     # Cross-reference: does the estimate claim operations the photos don't support?
