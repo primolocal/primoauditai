@@ -121,8 +121,11 @@ export default function QCDetailPage() {
               <span className="font-mono font-semibold text-[#58a6ff]">#{line.line_no}</span>
               <div className="flex items-center gap-1.5">{pc>0&&<span className="rounded bg-[#21262d] px-1 text-[9px] text-[#8b949e]">{pc}📸</span>}<span className="rounded bg-[#21262d] px-1.5 py-0.5 text-[10px] text-[#8b949e]">{line.operation}</span></div>
             </div>
-            <div className="mt-0.5 text-[#c9d1d9]">{line.description}</div>
-            {line.panel_name&&<div className="mt-0.5 text-[10px] text-[#484f58]">{line.panel_name}</div>}
+            <div className="mt-0.5 text-[11px] text-[#c9d1d9]">{line.description}</div>
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {line.panel_name&&<span className="text-[10px] text-[#484f58]">{line.panel_name}</span>}
+              {line.part_type&&<span className="rounded bg-[#21262d] px-1 py-0.5 text-[9px] text-[#8b949e]">{line.part_type}</span>}
+            </div>
           </div>)})}
       </div>
     </div>
@@ -153,7 +156,7 @@ export default function QCDetailPage() {
         {tab === "photos" && (
           <>
             {/* LEFT: Photo thumbnails */}
-            <div className="w-[220px] shrink-0 overflow-y-auto border-r border-[#21262d] p-2">
+            <div className="w-[170px] shrink-0 overflow-y-auto border-r border-[#21262d] p-2">
               <div className="grid grid-cols-2 gap-1.5">
                 {photos.map(p=>(
                   <div key={p.id} onClick={()=>selectPhoto(p)}
@@ -225,7 +228,7 @@ export default function QCDetailPage() {
         )}
 
         {/* RIGHT: Estimate (shared across both tabs) */}
-        <div className="w-[300px] shrink-0 overflow-y-auto border-l border-[#21262d] p-2">
+        <div className="w-[360px] shrink-0 overflow-y-auto border-l border-[#21262d] p-2">
           <EstimatePanel />
         </div>
       </div>
