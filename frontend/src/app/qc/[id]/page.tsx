@@ -206,8 +206,10 @@ export default function QCDetailPage() {
                         <span className={"ml-2 rounded px-1 py-0.5 text-[10px] "+(f.severity==="high"||f.severity==="critical"?"bg-red-500/20 text-red-400":"bg-yellow-500/20 text-yellow-400")}>{f.severity}</span>
                       </span>
                       {f.status&&f.status!=="pending"&&<span className="rounded bg-[#21262d] px-2 py-0.5 text-[10px] text-[#8b949e]">{f.status.toUpperCase()}</span>}
+                    {f.ai_override&&!f.applies&&<span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] text-blue-400" title={f.ai_reasoning||""}>🤖 AI OVERRULED</span>}
                     </div>
                     <p className="mt-1 text-[#8b949e]">{f.description}</p>
+                    {f.ai_reasoning&&<p className="mt-1 text-[10px] text-blue-400/70 italic">{f.ai_reasoning}</p>}
                     {f.line_numbers&&f.line_numbers.length>0&&<p className="mt-1 text-[10px] text-[#58a6ff]">Lines: {f.line_numbers.join(", ")}</p>}
                     <div className="mt-2 rounded bg-[#0d1117] px-2 py-1.5 text-[10px] text-[#c9d1d9] border border-[#21262d]">📝 {getNote(f)}</div>
                     <div className="mt-2 flex gap-2">

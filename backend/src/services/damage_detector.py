@@ -21,6 +21,10 @@ class BaseDamageDetector:
     def analyze(self, image_bytes: bytes, filename: str = "photo.jpg") -> dict[str, Any]:
         raise NotImplementedError
 
+    def verify_finding(self, finding: dict, estimate_lines: list, metadata: dict) -> dict:
+        """Default: trust the rules engine. Override in AI detectors."""
+        return {"applies": finding.get("applies", True), "confidence": 0.5, "reasoning": "No AI verification available"}
+
 
 class MockDamageDetector(BaseDamageDetector):
     """Fallback mock detector when no real vision model available."""
@@ -163,6 +167,53 @@ class GeminiVisionDetector(BaseDamageDetector):
             "ai_says_damage": has_damage,
             "ai_confidence": conf,
         }
+
+
+    def verify_finding(self, finding: dict, estimate_lines: list[dict], metadata: dict) -> dict:
+        """Ask Gemini whether a rule finding should actually trigger.
+        
+        Takes a finding from the rules engine and the full estimate context,
+        returns Gemini's judgment on whether this is a real issue or false positive.
+        """
+        if not self.api_key:
+            return {"applies": finding.get("applies", True), "confidence": 0.5, "reasoning": "No AI key configured"}
+
+        # Build context for Gemini
+        lines_text = ""
+        for ln in finding.get("line_numbers", [])[:5]:
+            for line in estimate_lines:
+                if str(line.get("line_no", "")) == str(ln):
+                    lines_text += f"  Line {ln}: {line.get('operation','')} {line.get('description','')} "
+                    lines_text += f"part={line.get('part_type','')} panel={line.get('panel_name','')} "
+                    lines_text += f"price={line.get('part_price','')} hours={line.get('labor_hours','')}\n"
+
+        prompt = (
+            f"You are an auto damage audit expert. A rules engine flagged this finding:\n"
+            f"Rule: {finding.get('rule_id','')}\n"
+            f"Description: {finding.get('description','')}\n"
+            f"Severity: {finding.get('severity','')}\n"
+            f"Suggested fix: {finding.get('suggested_fix','')}\n\n"
+            f"Vehicle: {metadata.get('year','')} {metadata.get('make','')} {metadata.get('model','')}\n"
+            f"Mileage: {metadata.get('odometer','')}\n"
+            f"State: {metadata.get('state','')}\n"
+            f"Total estimate: ${metadata.get('total_estimate','')}\n\n"
+            f"Relevant estimate lines:\n{lines_text}\n"
+            f"Based on your auto damage expertise, should this finding actually apply? "
+            f"Return ONLY: {{\"applies\":true/false,\"confidence\":0.0-1.0,\"reasoning\":\"one sentence\"}}\n"
+            f"Consider: repair context, part availability, damage severity, carrier guidelines, industry standards."
+        )
+
+        try:
+            payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.1, "maxOutputTokens": 150}}
+            r = httpx.post(f"{self.url}?key={self.api_key}", json=payload, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            text = self._clean_json(text)
+            result = json.loads(text)
+            return result
+        except Exception:
+            return {"applies": finding.get("applies", True), "confidence": 0.5, "reasoning": "AI verification failed — defaulting to rule engine"}
 
 
 class OllamaVisionDetector(BaseDamageDetector):

@@ -258,6 +258,22 @@ async def create_qc(
         "photo_other": max(0, len(classified_photos) - photo_v - photo_o - photo_d),
     }
 
+    # Run AI verification on findings (Gemini checks whether each rule should actually apply)
+    try:
+        from src.services.damage_detector import detector as vision
+        verified_findings = []
+        for f in qc_findings:
+            if f.get("severity") in ("high", "critical") and f.get("applies", True):
+                verification = vision.verify_finding(f, parsed_lines, parsed_metadata)
+                if not verification.get("applies", True):
+                    f["applies"] = False
+                    f["ai_override"] = True
+                    f["ai_reasoning"] = verification.get("reasoning", "")
+            verified_findings.append(f)
+        qc_findings = verified_findings
+    except Exception:
+        pass  # AI verification failed — use raw rules engine results
+
     # Calculate carrier confidence score
     score_result = calculate_carrier_confidence(
         qc_findings,
