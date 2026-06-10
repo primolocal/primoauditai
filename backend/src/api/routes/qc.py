@@ -36,6 +36,15 @@ UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/tmp/primoauditai/qc"))
 
 # ── Training/Learning Routes ──
 
+class LinesUpdate(BaseModel):
+    matched_lines: list[int] = []
+
+
+class DecisionUpdate(BaseModel):
+    state: str = ""  # confirmed, questionable, override
+    reason: str = ""
+
+
 class TrainingFeedback(BaseModel):
     photo_id: str
     original_type: str = ""
@@ -675,7 +684,7 @@ async def delete_photo(
 async def update_photo_lines(
     packet_id: str,
     photo_id: str,
-    body: dict[str, Any],
+    body: LinesUpdate,
 ) -> dict[str, Any]:
     """Save matched estimate lines for a photo."""
     # body is parsed from JSON by FastAPI
@@ -687,7 +696,7 @@ async def update_photo_lines(
         if not photo:
             raise HTTPException(status_code=404, detail="Photo not found")
         
-        matched_lines = body.get("matched_lines", [])
+        matched_lines = body.matched_lines
         vision = dict(photo.vision_result) if photo.vision_result else {}
         vision["matched_lines"] = matched_lines
         photo.vision_result = vision
@@ -699,7 +708,7 @@ async def update_photo_lines(
 async def decide_finding(
     packet_id: str,
     finding_id: str,
-    body: dict[str, Any],
+    body: DecisionUpdate,
 ) -> dict[str, Any]:
     """Three-state decision: CONFIRM / QUESTIONABLE / OVERRIDE."""
     # body is parsed from JSON by FastAPI
@@ -711,8 +720,8 @@ async def decide_finding(
         if not finding:
             raise HTTPException(status_code=404, detail="Finding not found")
         
-        state = body.get("state", "")
-        reason = body.get("reason", "")
+        state = body.state
+        reason = body.reason
         finding.status = state
         if reason:
             finding.override_reason = reason
