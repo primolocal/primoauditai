@@ -8,7 +8,7 @@ const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://primoauditai-produc
 const API_KEY=(process.env.NEXT_PUBLIC_API_KEY || "pa_dev") as string
 
 interface Line { line_no: number|string; description: string; operation?: string; panel_name?: string; part_type?: string; is_header?: boolean }
-interface Finding { id: string; rule_id: string; category: string; severity: string; description: string; suggested_fix?: string; line_numbers: (string|number)[]; status: string; applies: boolean }
+interface Finding { id: string; rule_id: string; category: string; severity: string; description: string; suggested_fix?: string; line_numbers: (string|number)[]; status: string; applies: boolean; ai_override?: boolean; ai_reasoning?: string }
 interface Photo { id: string; filename: string; photo_type?: string; photo_location?: string; confidence?: number; width: number; height: number; page_num: number; image_index?: number; matched_lines?: number[]; thumbnail?: string }
 interface QCPacket { id: string; claim_number: string; carrier_confidence_score: number; carrier_ready: boolean; findings_count: number; photo_total: number; findings: Finding[]; photos: Photo[]; parsed_lines?: Line[]; created_at: string }
 
