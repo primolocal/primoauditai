@@ -675,51 +675,47 @@ async def delete_photo(
 async def update_photo_lines(
     packet_id: str,
     photo_id: str,
-    request: Request,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
     """Save matched estimate lines for a photo."""
-    body = await request.json()
-    matched_lines = body.get("matched_lines", [])
-    
-    db = request.app.state.db
-    photo = db.query(QCPhoto).filter(
-        QCPhoto.id == photo_id,
-        QCPhoto.qc_packet_id == packet_id,
-    ).first()
-    if not photo:
-        raise HTTPException(status_code=404, detail="Photo not found")
-    
-    vision = dict(photo.vision_result) if photo.vision_result else {}
-    vision["matched_lines"] = matched_lines
-    photo.vision_result = vision
-    db.commit()
-    return {"id": str(photo.id), "matched_lines": matched_lines}
+    async with async_session() as db:
+        result = await db.execute(
+            select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
+        )
+        photo = result.scalar_one_or_none()
+        if not photo:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        
+        matched_lines = body.get("matched_lines", [])
+        vision = dict(photo.vision_result) if photo.vision_result else {}
+        vision["matched_lines"] = matched_lines
+        photo.vision_result = vision
+        await db.commit()
+        return {"id": str(photo.id), "matched_lines": matched_lines}
 
 
 @router.patch("/{packet_id}/findings/{finding_id}/decide")
 async def decide_finding(
     packet_id: str,
     finding_id: str,
-    request: Request,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
     """Three-state decision: CONFIRM / QUESTIONABLE / OVERRIDE."""
-    body = await request.json()
-    state = body.get("state", "")  # confirmed, questionable, override
-    reason = body.get("reason", "")
-    
-    db = request.app.state.db
-    finding = db.query(QCFinding).filter(
-        QCFinding.id == finding_id,
-        QCFinding.qc_packet_id == packet_id,
-    ).first()
-    if not finding:
-        raise HTTPException(status_code=404, detail="Finding not found")
-    
-    finding.status = state
-    if reason:
-        finding.override_reason = reason
-    db.commit()
-    return {"id": str(finding.id), "status": state, "reason": reason}
+    async with async_session() as db:
+        result = await db.execute(
+            select(QCFinding).filter(QCFinding.id == uuid.UUID(finding_id), QCFinding.qc_packet_id == uuid.UUID(packet_id))
+        )
+        finding = result.scalar_one_or_none()
+        if not finding:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        
+        state = body.get("state", "")
+        reason = body.get("reason", "")
+        finding.status = state
+        if reason:
+            finding.override_reason = reason
+        await db.commit()
+        return {"id": str(finding.id), "status": state, "reason": reason}
 
 
 @router.get("/dataset/export")
