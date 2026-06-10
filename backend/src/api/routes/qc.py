@@ -675,10 +675,10 @@ async def delete_photo(
 async def update_photo_lines(
     packet_id: str,
     photo_id: str,
-    request: Request,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
     """Save matched estimate lines for a photo."""
-    body = await request.json()
+    # body is parsed from JSON by FastAPI
     async with async_session() as db:
         result = await db.execute(
             select(QCPhoto).filter(QCPhoto.id == uuid.UUID(photo_id), QCPhoto.qc_packet_id == uuid.UUID(packet_id))
@@ -699,10 +699,10 @@ async def update_photo_lines(
 async def decide_finding(
     packet_id: str,
     finding_id: str,
-    request: Request,
+    body: dict[str, Any],
 ) -> dict[str, Any]:
     """Three-state decision: CONFIRM / QUESTIONABLE / OVERRIDE."""
-    body = await request.json()
+    # body is parsed from JSON by FastAPI
     async with async_session() as db:
         result = await db.execute(
             select(QCFinding).filter(QCFinding.id == uuid.UUID(finding_id), QCFinding.qc_packet_id == uuid.UUID(packet_id))
