@@ -331,6 +331,7 @@ async def create_qc(
         photo_dir.mkdir(parents=True, exist_ok=True)
         import base64 as _b64
         
+        photo_ids = []
         for i, p in enumerate(classified_photos):
             # Save photo to disk
             fname = f"photo_{i+1:03d}.jpg"
@@ -339,8 +340,9 @@ async def create_qc(
             with open(fpath, "wb") as f:
                 f.write(raw)
             
+            photo_id = uuid.uuid4()
             db.add(QCPhoto(
-                id=uuid.uuid4(),
+                id=photo_id,
                 qc_packet_id=packet_id,
                 page_num=p.get("page_num", 0),
                 image_index=p.get("image_index", 0),
@@ -362,11 +364,12 @@ async def create_qc(
                     "matched_lines": p.get("matched_lines", []),
                 },
             ))
+            photo_ids.append(str(photo_id))
         
         # Build photo response for POST return
         photo_items_out = [
             {
-                "id": str(uuid.uuid4()),
+                "id": photo_ids[idx],
                 "filename": f"photo_{idx+1:03d}.jpg",
                 "photo_type": p.get("photo_type"),
                 "confidence": p.get("confidence", 0.0),
