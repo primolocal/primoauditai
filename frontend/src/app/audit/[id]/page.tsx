@@ -1,432 +1,235 @@
 "use client"
 
-import * as React from "react"
-import { useRouter } from "next/navigation"
-import { ArrowLeft, AlertTriangle, CheckCircle, HelpCircle, Ban, X as XIcon } from "lucide-react"
+import React, { useState, useEffect, useCallback } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { ArrowLeft, Search, X } from "lucide-react"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
-const API_KEY = "pa_dev_key"
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "https://primoauditai-production.up.railway.app")
+const API_KEY=(process.env.NEXT_PUBLIC_API_KEY || "pa_dev") as string
 
-interface ParsedLine {
-  line_no: string
-  is_header?: boolean
-  panel_name?: string
-  description?: string
-  operation?: string
-  operation_label?: string
-  part_number?: string
-  quantity?: number
-  part_price?: number
-  labor_hours?: number
-  paint_hours?: number
-  total?: number
-  labor_type?: string
-  flag?: string
-  supplement?: string
-  part_type?: string
+interface Line { line_no: number|string; description: string; operation?: string; panel_name?: string; part_type?: string; is_header?: boolean }
+interface Finding { id: string; rule_id: string; category: string; severity: string; description: string; suggested_fix?: string; line_numbers: (string|number)[]; status: string; applies: boolean }
+interface Photo { id: string; filename: string; photo_type?: string; photo_location?: string; confidence?: number; width: number; height: number; page_num: number; image_index?: number; matched_lines?: number[]; thumbnail?: string }
+interface QCPacket { id: string; claim_number: string; carrier_confidence_score: number; carrier_ready: boolean; findings_count: number; photo_total: number; findings: Finding[]; photos: Photo[]; parsed_lines?: Line[]; created_at: string }
+
+const typeColors: Record<string, string> = {
+  vin: "bg-green-500/20 text-green-400 border-green-500/30", odometer: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  damage: "bg-orange-500/20 text-orange-400 border-orange-500/30", needs_review: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  dent: "bg-red-500/20 text-red-400 border-red-500/30", scratch: "bg-red-500/20 text-red-400 border-red-500/30",
+  crack: "bg-red-500/20 text-red-400 border-red-500/30", rust: "bg-red-500/20 text-red-400 border-red-500/30",
+  corrosion: "bg-red-500/20 text-red-400 border-red-500/30", other: "bg-gray-500/20 text-gray-400 border-gray-500/30",
 }
 
-function PartTypeBadge({ part_type }: { part_type?: string }) {
-  if (!part_type) return null
-  const colors: Record<string, string> = {
-    "A/M": "bg-[#8b5cf6]/20 text-[#a78bfa] border-[#8b5cf6]/30",
-    "LKQ": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
-    "RECON": "bg-[#10b981]/20 text-[#34d399] border-[#10b981]/30",
-    "REC": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
-    "USED": "bg-[#f59e0b]/20 text-[#fbbf24] border-[#f59e0b]/30",
-    "OEM": "bg-[#3b82f6]/20 text-[#60a5fa] border-[#3b82f6]/30",
-  }
-  return (
-    <span className={`rounded border px-1.5 py-0 text-[10px] font-semibold ${colors[part_type] || ""}`}>
-      {part_type}
-    </span>
-  )
-}
-
-interface AuditRun {
-  id: string
-  claim_number: string | null
-  vehicle_year: number | null
-  vehicle_make: string | null
-  vehicle_model: string | null
-  insurance_company: string | null
-  status: string
-  findings_count: number
-  passed_count: number
-  failed_count: number
-  created_at: string
-  parsed_lines: ParsedLine[] | null
-  parsed_panels: Record<string, ParsedLine[]> | null
-  parsed_metadata: Record<string, any> | null
-}
-
-interface Finding {
-  id: string
-  rule_id: string
-  category: string
-  severity: string
-  description: string
-  line_numbers: number[]
-  confidence: number
-  applies: boolean
-  status: string
-  override_reason: string | null
-}
-
-function SeverityBadge({ severity }: { severity: string }) {
-  const colors: Record<string, string> = {
-    critical: "bg-red-500/20 text-red-400",
-    high: "bg-orange-500/20 text-orange-400",
-    medium: "bg-yellow-500/20 text-yellow-400",
-    low: "bg-blue-500/20 text-blue-400",
-  }
-  return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${colors[severity] || colors.low}`}>
-      {severity}
-    </span>
-  )
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { color: string; icon: React.ReactNode }> = {
-    confirmed: { color: "text-green-400", icon: <CheckCircle className="h-3 w-3" /> },
-    questionable: { color: "text-yellow-400", icon: <HelpCircle className="h-3 w-3" /> },
-    override: { color: "text-purple-400", icon: <Ban className="h-3 w-3" /> },
-    unreviewed: { color: "text-red-400", icon: <AlertTriangle className="h-3 w-3" /> },
-  }
-  const s = map[status] || map.unreviewed
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs ${s.color}`}>
-      {s.icon}
-      {status}
-    </span>
-  )
-}
-
-async function patchFinding(auditId: string, findingId: string, body: object) {
-  const res = await fetch(`${API_URL}/api/audits/${auditId}/findings/${findingId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
-}
-
-export default function AuditDetailPage({ params }: { params: { id: string } }) {
+export default function QCDetailPage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const [audit, setAudit] = React.useState<AuditRun | null>(null)
-  const [findings, setFindings] = React.useState<Finding[]>([])
-  const [loading, setLoading] = React.useState(true)
-  const [error, setError] = React.useState("")
-  const [editingId, setEditingId] = React.useState<string | null>(null)
-  const [reasonInput, setReasonInput] = React.useState("")
-  const [savingId, setSavingId] = React.useState<string | null>(null)
-  const [highlightLine, setHighlightLine] = React.useState<string | null>(null)
-  const lineScrollRef = React.useRef<HTMLDivElement>(null)
+  const [packet, setPacket] = useState<QCPacket|null>(null)
+  const [tab, setTab] = useState<"audit"|"photos">("audit")
+  const [selected, setSelected] = useState<Photo|null>(null)
+  const [selLines, setSelLines] = useState<number[]>([])
+  const [lineFilter, setLineFilter] = useState("")
+  const [loading, setLoading] = useState(true)
 
-  const id = params.id
+  const a = async (url: string, opts?: RequestInit) => {
+    const r = await fetch(url, { ...opts, headers: { ...(opts?.headers||{}), "X-API-Key": API_KEY } })
+    if (!r.ok && r.status !== 204) { const t = await r.text(); console.error(url, r.status, t.slice(0,200)) }
+    return r
+  }
 
-  React.useEffect(() => {
-    if (!highlightLine || !lineScrollRef.current) return
-    const el = lineScrollRef.current.querySelector(`[data-line="${highlightLine}"]`)
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" })
-    }
-  }, [highlightLine])
-
-  const load = React.useCallback(() => {
-    setLoading(true)
-    Promise.all([
-      fetch(`${API_URL}/api/audits/${id}`, { headers: { "X-API-Key": API_KEY } }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-      fetch(`${API_URL}/api/audits/${id}/findings`, { headers: { "X-API-Key": API_KEY } }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-    ])
-    .then(([a, f]) => {
-      setAudit(a)
-      setFindings(Array.isArray(f) ? f : (f.items || f.findings || []))
-      setLoading(false)
-    })
-    .catch((err) => {
-      setError(typeof err === "number" ? `HTTP ${err}` : err.message || "Failed to load")
-      setLoading(false)
-    })
+  const load = useCallback(async () => {
+    const r = await a(`${API_URL}/api/qc/${id}`); const d = await r.json()
+    setPacket(d)
+    if (d.photos?.length > 0 && !selected) { setSelected(d.photos[0]); setSelLines(d.photos[0].matched_lines||[]) }
+    setLoading(false)
   }, [id])
 
-  React.useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load])
 
-  async function handleConfirm(findingId: string) {
-    setSavingId(findingId)
-    try {
-      await patchFinding(id, findingId, { status: "confirmed" })
-      setFindings(prev => prev.map(f => f.id === findingId ? { ...f, status: "confirmed" } : f))
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSavingId(null)
+  // Keyboard nav — only active in Photos tab
+  useEffect(() => {
+    if (tab !== "photos" || !packet) return
+    const handler = (e: KeyboardEvent) => {
+      const photos = packet.photos || []
+      const idx = selected ? photos.findIndex(p => p.id === selected.id) : -1
+      if (e.key === "ArrowRight" && idx < photos.length - 1) selectPhoto(photos[idx+1])
+      if (e.key === "ArrowLeft" && idx > 0) selectPhoto(photos[idx-1])
     }
+    window.addEventListener("keydown", handler); return () => window.removeEventListener("keydown", handler)
+  }, [tab, selected, packet])
+
+  const selectPhoto = async (p: Photo) => {
+    if (selected && selected.id !== p.id) await saveLines(selected.id, selLines)
+    setSelected(p); setSelLines(p.matched_lines || [])
+  }
+  const updateType = async (pid: string, t: string) => {
+    await a(`${API_URL}/api/qc/${id}/photos/${pid}/type`, {method:"PATCH",headers:{"Content-Type":"application/json"}, body:JSON.stringify({photo_type:t})}); await load()
+  }
+  const updateLoc = async (pid: string, loc: string) => {
+    await a(`${API_URL}/api/qc/${id}/photos/${pid}/location`, {method:"PATCH",headers:{"Content-Type":"application/json"}, body:JSON.stringify({photo_location:loc})}); await load()
+  }
+  const saveLines = async (pid: string, lines: number[]) => {
+    await a(`${API_URL}/api/qc/${id}/photos/${pid}/lines`, {method:"PATCH",headers:{"Content-Type":"application/json"}, body:JSON.stringify({matched_lines:lines})})
+  }
+  const toggleLine = (ln: number) => { setSelLines(prev => prev.includes(ln) ? prev.filter(l=>l!==ln) : [...prev, ln]) }
+  const deletePhoto = async (pid: string) => { if(!confirm("Remove?"))return; await a(`${API_URL}/api/qc/${id}/photos/${pid}`,{method:"DELETE"}); await load() }
+  const decide = async (fid: string, state: string, reason?: string) => {
+    await a(`${API_URL}/api/qc/${id}/findings/${fid}/decide`,{method:"PATCH",headers:{"Content-Type":"application/json"}, body:JSON.stringify({state,reason:reason||""})}); await load()
   }
 
-  async function handleOverride(findingId: string) {
-    setSavingId(findingId)
-    try {
-      await patchFinding(id, findingId, { status: "override", applies: false })
-      setFindings(prev => prev.map(f => f.id === findingId ? { ...f, status: "override", applies: false } : f))
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSavingId(null)
-    }
+  if (loading || !packet) return <div className="flex h-screen items-center justify-center bg-[#0d1117] text-[#8b949e]">Loading...</div>
+
+  const photos = packet.photos || []
+  const lines: Line[] = (packet.parsed_lines || []).filter((l:Line) => !l.is_header)
+  const flines = lineFilter ? lines.filter(l => `${l.description} ${l.panel_name||""}`.toLowerCase().includes(lineFilter.toLowerCase())) : lines
+  const findings = packet.findings || []
+  const confirmed = findings.filter(f=>f.status==="confirmed").length
+  const questioned = findings.filter(f=>f.status==="questionable").length
+  const overridden = findings.filter(f=>f.status==="override").length
+  const undecided = findings.filter(f=>!f.status||f.status==="pending").length
+  const linePhotoCount: Record<number,number> = {}; for(const p of photos) for(const ln of(p.matched_lines||[])) linePhotoCount[ln]=(linePhotoCount[ln]||0)+1
+
+  const getNote = (f:Finding) => {
+    const ls = f.line_numbers?.join(",")||"N/A"
+    if (f.rule_id==="NATGEN_004") return `Replace OEM on line${f.line_numbers?.length>1?"s":""} ${ls} with LKQ per carrier. Vehicle does not qualify.`
+    if (f.rule_id==="NATGEN_001") return `Scan exceeds 0.5h. Reduce to max per carrier.`
+    return f.suggested_fix || f.description
   }
 
-  async function handleSaveReason(findingId: string) {
-    if (!reasonInput.trim()) return
-    setSavingId(findingId)
-    try {
-      await patchFinding(id, findingId, { override_reason: reasonInput.trim() })
-      setFindings(prev => prev.map(f => f.id === findingId ? { ...f, override_reason: reasonInput.trim() } : f))
-      setEditingId(null)
-      setReasonInput("")
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setSavingId(null)
-    }
-  }
+  const TypeBadge = ({t}:{t?:string}) => (
+    <span className={"inline-block rounded px-1.5 py-0.5 text-[10px] font-bold uppercase "+(typeColors[t||"other"]||typeColors.other)}>{t||"review"}</span>
+  )
 
-  if (loading) return <div className="p-6 text-sm text-[#8b949e]">Loading...</div>
-  if (error) return <div className="p-6 text-sm text-red-400">Error: {error}</div>
-  if (!audit) return <div className="p-6 text-sm text-[#8b949e]">Not found</div>
-
-  const vehicle = [audit.vehicle_year, audit.vehicle_make, audit.vehicle_model].filter(Boolean).join(" ") || "Unknown vehicle"
-  const lines = audit.parsed_lines || []
-
-  // Build set of line numbers referenced by any finding + their review status
-  const referencedLines = new Set<string>()
-  const lineStatus = new Map<string, "resolved" | "needs-review">()
-  findings.forEach((f) => {
-    (f.line_numbers || []).forEach((ln: number) => {
-      const s = String(ln)
-      referencedLines.add(s)
-      if (f.status === "unreviewed" || f.status === "questionable") {
-        lineStatus.set(s, "needs-review")
-      } else if (!lineStatus.has(s)) {
-        lineStatus.set(s, "resolved")
-      }
-    })
-  })
+  const EstimatePanel = () => (
+    <div className="flex flex-col h-full">
+      <div className="mb-2 rounded border border-[#21262d] bg-[#161b22] p-2">
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#484f58]">Health</div>
+        <div className="grid grid-cols-2 gap-1 text-[10px]">
+          <span className="text-green-400">✓ {confirmed} confirmed</span><span className="text-yellow-400">? {questioned} questioned</span>
+          <span className="text-purple-400">⊘ {overridden} overridden</span><span className="text-[#8b949e]">☐ {undecided} remaining</span>
+        </div>
+        <div className="mt-1 h-1 rounded-full bg-[#21262d]"><div className="h-full rounded-full bg-green-500" style={{width:`${findings.length?Math.round((confirmed/Math.max(findings.length,1))*100):0}%`}}/></div>
+      </div>
+      <div className="relative mb-2"><Search className="absolute left-2 top-1.5 h-3 w-3 text-[#484f58]"/>
+        <input type="text" placeholder="Filter lines..." value={lineFilter} onChange={e=>setLineFilter(e.target.value)}
+          className="w-full rounded border border-[#30363d] bg-[#0d1117] py-1 pl-6 pr-2 text-xs text-[#c9d1d9] outline-none focus:border-[#58a6ff]"/></div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[#484f58]">{flines.length} lines</div>
+      <div className="space-y-1 overflow-y-auto flex-1">
+        {flines.map(line=>{const ln=Number(line.line_no);const pc=linePhotoCount[ln]||0
+          return (<div key={String(line.line_no)} onClick={()=>tab==="photos"&&toggleLine(ln)}
+            className={"cursor-pointer rounded p-2 text-xs transition-all "+(selLines.includes(ln)&&tab==="photos"?"border border-[#58a6ff] bg-[#1f6feb]/10":"border border-transparent hover:bg-[#161b22]")}>
+            <div className="flex items-center justify-between">
+              <span className="font-mono font-semibold text-[#58a6ff]">#{line.line_no}</span>
+              <div className="flex items-center gap-1.5">{pc>0&&<span className="rounded bg-[#21262d] px-1 text-[9px] text-[#8b949e]">{pc}📸</span>}<span className="rounded bg-[#21262d] px-1.5 py-0.5 text-[10px] text-[#8b949e]">{line.operation}</span></div>
+            </div>
+            <div className="mt-0.5 text-[11px] text-[#c9d1d9]">{line.description}</div>
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {line.panel_name&&<span className="text-[10px] text-[#484f58]">{line.panel_name}</span>}
+              {line.part_type&&<span className="rounded bg-[#21262d] px-1 py-0.5 text-[9px] text-[#8b949e]">{line.part_type}</span>}
+            </div>
+          </div>)})}
+      </div>
+    </div>
+  )
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <button
-          onClick={() => router.push("/audits")}
-          className="mb-3 flex items-center gap-1 text-sm text-[#8b949e] hover:text-[#c9d1d9]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to audits
-        </button>
-        <h1 className="text-xl font-semibold text-[#c9d1d9]">{audit.claim_number || "Untitled Audit"}</h1>
-        <p className="text-sm text-[#8b949e]">{vehicle}</p>
-      </div>
-
-      <div className="mb-6 grid grid-cols-4 gap-3">
-        {[
-          { label: "Findings", value: audit.findings_count, color: "text-[#f0883e]" },
-          { label: "Passed", value: audit.passed_count, color: "text-green-400" },
-          { label: "Failed", value: audit.failed_count, color: "text-red-400" },
-          { label: "Status", value: audit.status, color: "text-[#c9d1d9]" },
-        ].map((s) => (
-          <div key={s.label} className="rounded-lg border border-[#21262d] bg-[#161b22] p-3">
-            <p className="text-xs text-[#8b949e]">{s.label}</p>
-            <p className={`text-lg font-semibold ${s.color}`}>{s.value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 items-start">
-        {/* LEFT: Findings */}
-        <div>
-          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Findings ({findings.length})</h2>
-          {findings.length === 0 ? (
-            <p className="text-sm text-[#8b949e]">No findings.</p>
-          ) : (
-            <div className="space-y-2">
-              {findings.map((f) => (
-                <div
-                  key={f.id}
-                  className={`rounded-lg border bg-[#161b22] p-3 hover:border-[#30363d] cursor-pointer ${
-                    f.status === "override"
-                      ? "border-purple-500/30"
-                      : f.status === "confirmed"
-                      ? "border-green-500/30"
-                      : "border-[#21262d]"
-                  }`}
-                  onClick={() => {
-                    if (f.line_numbers?.length) {
-                      setHighlightLine(String(f.line_numbers[0]))
-                    }
-                  }}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-[#484f58]">{f.rule_id}</span>
-                      <SeverityBadge severity={f.severity} />
-                      <StatusBadge status={f.status} />
-                    </div>
-                    <span className="text-xs text-[#484f58]">
-                      {f.line_numbers?.length ? `L${f.line_numbers.join(", ")}` : ""}
-                    </span>
-                  </div>
-                  <p className="mb-2 text-sm text-[#c9d1d9]">{f.description}</p>
-
-                  {/* Action row */}
-                  <div className="flex items-center gap-2">
-                    {f.status !== "confirmed" && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleConfirm(f.id) }}
-                        disabled={savingId === f.id}
-                        className="inline-flex items-center gap-1 rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20 disabled:opacity-50"
-                      >
-                        <CheckCircle className="h-3 w-3" />
-                        Confirm
-                      </button>
-                    )}
-                    {f.status !== "override" && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleOverride(f.id) }}
-                        disabled={savingId === f.id}
-                        className="inline-flex items-center gap-1 rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-xs text-purple-400 hover:bg-purple-500/20 disabled:opacity-50"
-                      >
-                        <Ban className="h-3 w-3" />
-                        Override
-                      </button>
-                    )}
-                    {editingId === f.id ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          autoFocus
-                          className="rounded border border-[#30363d] bg-[#0d1117] px-2 py-1 text-xs text-[#c9d1d9] placeholder-[#484f58] outline-none focus:border-[#58a6ff]"
-                          placeholder="Reason..."
-                          value={reasonInput}
-                          onChange={(e) => setReasonInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveReason(f.id) }}
-                        />
-                        <button
-                          onClick={() => handleSaveReason(f.id)}
-                          disabled={savingId === f.id || !reasonInput.trim()}
-                          className="rounded border border-[#30363d] px-2 py-1 text-xs text-[#c9d1d9] hover:bg-[#21262d] disabled:opacity-50"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => { setEditingId(null); setReasonInput("") }}
-                          className="rounded px-1 py-1 text-xs text-[#8b949e] hover:text-[#c9d1d9]"
-                        >
-                          <XIcon className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditingId(f.id); setReasonInput(f.override_reason || "") }}
-                        className="text-xs text-[#8b949e] hover:text-[#c9d1d9]"
-                      >
-                        {f.override_reason ? "Edit reason" : "Add reason"}
-                      </button>
-                    )}
-                  </div>
-
-                  {f.override_reason && (
-                    <p className="mt-1 text-xs text-[#8b949e]">
-                      Reason: {f.override_reason}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+    <div className="flex h-screen flex-col bg-[#0d1117] text-[#c9d1d9]">
+      {/* TOP BAR */}
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#21262d] bg-[#161b22] px-4">
+        <div className="flex items-center gap-3">
+          <button onClick={()=>router.push("/audit")} className="text-[#8b949e] hover:text-[#c9d1d9]"><ArrowLeft className="h-5 w-5"/></button>
+          <span className="text-sm font-semibold">{packet.claim_number}</span>
+          <span className="text-xs text-[#8b949e]">Score: <span className={packet.carrier_confidence_score>=158?"text-green-400":"text-red-400"}>{packet.carrier_confidence_score}/225</span></span>
         </div>
+        <div className="flex items-center gap-1">
+          <button onClick={()=>setTab("audit")} className={"px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 transition-colors "+(tab==="audit"?"border-[#f0883e] text-[#f0883e] bg-[#1a1f2e]":"border-transparent text-[#8b949e] hover:text-[#c9d1d9]")}>
+            Audit ({findings.length})
+          </button>
+          <button onClick={()=>setTab("photos")} className={"px-3 py-1.5 text-xs font-semibold rounded-t border-b-2 transition-colors "+(tab==="photos"?"border-[#f0883e] text-[#f0883e] bg-[#1a1f2e]":"border-transparent text-[#8b949e] hover:text-[#c9d1d9]")}>
+            Photos ({photos.length})
+          </button>
+          <span className="ml-4 text-[10px] text-[#484f58]">{tab==="photos"?"← → navigate photos":""}</span>
+        </div>
+      </div>
 
-        {/* RIGHT: Estimate Lines */}
-        <div className="sticky top-14">
-          <h2 className="mb-3 text-sm font-semibold text-[#c9d1d9]">Estimate Lines ({lines.length})</h2>
-          <div className="rounded-lg border border-[#21262d] bg-[#161b22] p-2">
-            <div className="space-y-0.5 max-h-[70vh] overflow-y-auto" ref={lineScrollRef}>
-              {lines.length === 0 ? (
-                <p className="px-3 py-4 text-sm text-[#8b949e]">No parsed lines.</p>
-              ) : (
-                lines.map((line, idx) => {
-                  const isHeader = line.is_header
-                  const isRef = referencedLines.has(line.line_no)
-                  const isHighlight = highlightLine === line.line_no
-                  const bg = isHeader
-                    ? "bg-[#21262d] font-semibold"
-                    : isHighlight
-                    ? "bg-[#f0883e]/10"
-                    : isRef
-                    ? "bg-[#58a6ff]/5"
-                    : "hover:bg-[#0d1117]"
+      {/* BODY */}
+      <div className="flex flex-1 overflow-hidden">
+        {tab === "photos" && (
+          <>
+            {/* LEFT: Photo thumbnails */}
+            <div className="w-[170px] shrink-0 overflow-y-auto border-r border-[#21262d] p-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                {photos.map(p=>(
+                  <div key={p.id} onClick={()=>selectPhoto(p)}
+                    className={"relative cursor-pointer overflow-hidden rounded border-2 transition-all "+(selected?.id===p.id?"border-[#58a6ff] shadow-lg shadow-[#58a6ff]/20":"border-[#21262d] hover:border-[#484f58]")}>
+                    <button onClick={e=>{e.stopPropagation();deletePhoto(p.id)}} className="absolute right-0.5 top-0.5 z-10 rounded bg-red-500/70 px-1 text-[8px] font-bold text-white opacity-0 hover:opacity-100">✕</button>
+                    {p.thumbnail?<img src={p.thumbnail} className="aspect-square w-full object-cover"/>:<div className="flex aspect-square items-center justify-center bg-[#161b22] text-[9px] text-[#484f58]">No img</div>}
+                    <div className="bg-[#161b22] px-1 py-0.5"><TypeBadge t={p.photo_type}/>{p.matched_lines&&p.matched_lines.length>0&&<span className="ml-1 text-[8px] text-[#58a6ff]">L{p.matched_lines.join(",")}</span>}</div>
+                  </div>))}
+              </div>
+            </div>
+            {/* CENTER: Photo detail */}
+            <div className="flex flex-1 flex-col overflow-y-auto bg-[#161b22]">
+            {selected?(
+              <div className="p-4">
+                <div className="mb-4 overflow-hidden rounded-lg border border-[#21262d] bg-[#0d1117] relative">
+                  {selected.thumbnail?<a href={selected.thumbnail} target="_blank"><img src={selected.thumbnail} className="max-h-[350px] w-full object-contain"/></a>:<div className="flex h-[350px] items-center justify-center text-sm text-[#484f58]">No preview</div>}
+                  <div className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-1 text-[10px] text-[#8b949e]">{selected.width}×{selected.height}</div>
+                </div>
+                <div className="mb-4 grid grid-cols-3 gap-3 text-xs">
+                  <div><label className="mb-1 block text-[10px] uppercase tracking-wide text-[#484f58]">Type</label>
+                    <select value={selected.photo_type||"needs_review"} onChange={e=>updateType(selected.id,e.target.value)} className="w-full rounded border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-sm text-[#c9d1d9]">
+                      <option value="needs_review">🔍 Review</option><option value="dent">🔨 Dent</option><option value="scratch">🖊️ Scratch</option><option value="crack">💔 Crack</option><option value="rust">🟤 Rust</option><option value="corrosion">🟤 Corrosion</option><option value="damage">⚠️ Damage</option><option value="vin">🔢 VIN</option><option value="odometer">🚘 Odometer</option><option value="other">🔄 Other</option>
+                    </select></div>
+                  <div><label className="mb-1 block text-[10px] uppercase tracking-wide text-[#484f58]">Location</label>
+                    <input type="text" defaultValue={selected.photo_location&&selected.photo_location!=="needs_review"?selected.photo_location:""} placeholder="set location..." onBlur={e=>{if(e.target.value.trim())updateLoc(selected.id,e.target.value.trim())}} className="w-full rounded border border-[#30363d] bg-[#0d1117] px-2 py-1.5 text-sm text-[#c9d1d9]"/></div>
+                  <div><label className="mb-1 block text-[10px] uppercase tracking-wide text-[#484f58]">AI</label>
+                    <div className="flex items-center gap-2 pt-1"><div className="h-2 flex-1 rounded-full bg-[#21262d]"><div className={"h-full rounded-full "+((selected.confidence||0)>=0.85?"bg-green-500":(selected.confidence||0)>=0.6?"bg-yellow-500":"bg-red-500")} style={{width:`${Math.round((selected.confidence||0)*100)}%`}}/></div><span className="text-xs font-mono">{Math.round((selected.confidence||0)*100)}%</span></div></div>
+                </div>
+                <div className="mb-4"><label className="mb-2 block text-[10px] uppercase tracking-wide text-[#484f58]">Matched Lines ({selLines.length})</label>
+                  {selLines.length>0?<div className="flex flex-wrap gap-1.5">{selLines.map(ln=>{const line=lines.find(l=>Number(l.line_no)===ln);return line?<span key={ln} className="rounded bg-[#1f6feb]/20 px-2 py-1 text-xs font-mono text-[#58a6ff]">#{ln} {line.operation} {line.description?.slice(0,25)}</span>:null})}</div>:<p className="text-xs text-[#484f58]">Click lines on the right to match.</p>}</div>
+              </div>
+            ):<div className="flex flex-1 items-center justify-center text-sm text-[#484f58]">← Select a photo</div>}
+            </div>
+          </>
+        )}
 
-                  if (isHeader) {
-                    return (
-                      <div
-                        key={idx}
-                        data-line={line.line_no}
-                        className={`rounded px-3 py-1.5 text-sm text-[#c9d1d9] ${bg}`}
-                      >
-                        <span className="text-[#8b949e] mr-2">{line.line_no}</span>
-                        {line.panel_name || line.description || ""}
-                      </div>
-                    )
-                  }
-
-                  return (
-                    <div
-                      key={idx}
-                      data-line={line.line_no}
-                      className={`flex items-start gap-3 rounded px-3 py-1.5 text-xs transition-colors cursor-pointer ${bg} ${isHighlight ? "border-l-2 border-l-[#f0883e]" : ""}`}
-                      onClick={() => setHighlightLine(line.line_no === highlightLine ? null : line.line_no)}
-                    >
-                      <span className={`font-mono min-w-[2ch] text-right shrink-0 ${isRef ? "text-[#58a6ff] font-semibold" : "text-[#484f58]"}`}>
-                        {line.line_no}
+        {tab === "audit" && (
+          <div className="flex flex-1 flex-col overflow-y-auto bg-[#161b22] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-[#8b949e]">Findings ({findings.length})</span>
+              <span className="text-[10px] text-[#484f58]">C=Confirm Q=Question O=Override</span>
+            </div>
+            <div className="space-y-2">
+              {findings.map(f=>{
+                const sc:Record<string,string>={confirmed:"border-green-500/30 bg-green-500/5",questionable:"border-yellow-500/30 bg-yellow-500/5",override:"border-purple-500/30 bg-purple-500/5"}
+                return (
+                  <div key={f.id} className={"rounded border p-3 text-xs "+(sc[f.status]||"border-[#21262d] bg-[#0d1117]")}>
+                    <div className="flex items-center justify-between">
+                      <span><span className="font-semibold">{f.rule_id}</span>
+                        <span className={"ml-2 rounded px-1 py-0.5 text-[10px] "+(f.severity==="high"||f.severity==="critical"?"bg-red-500/20 text-red-400":"bg-yellow-500/20 text-yellow-400")}>{f.severity}</span>
                       </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 truncate">
-                          {line.flag && <span className="text-[#f0883e] font-bold">{line.flag}</span>}
-                          {line.operation && (
-                            <span className="rounded bg-[#21262d] px-1 text-[#8b949e]">{line.operation}</span>
-                          )}
-                          <span className="text-[#c9d1d9] truncate">{line.description}</span>
-                        </div>
-                        {(line.part_number || line.quantity || line.part_price || line.labor_hours || line.paint_hours || line.total) && (
-                          <div className="mt-0.5 flex gap-3 text-[#484f58]">
-                            {line.part_number && <span>PN: {line.part_number}</span>}
-                            {typeof line.quantity === 'number' && line.quantity > 0 && <span>Qty: {line.quantity}</span>}
-                            {typeof line.part_price === 'number' && line.part_price > 0 && <span>Part: ${line.part_price}</span>}
-                            {typeof line.labor_hours === 'number' && line.labor_hours !== 0 && <span>Lab: {line.labor_hours}h</span>}
-                            {typeof line.paint_hours === 'number' && line.paint_hours !== 0 && <span>Pnt: {line.paint_hours}h</span>}
-                            {typeof line.total === 'number' && line.total > 0 && <span className="text-[#c9d1d9]">${line.total}</span>}
-                          </div>
-                        )}
-                        <div className="mt-0.5 flex items-center gap-2 flex-wrap text-[#484f58]">
-                          {line.part_type && <PartTypeBadge part_type={line.part_type} />}
-                          {isRef && lineStatus.get(line.line_no) === "resolved" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-green-400">
-                              <CheckCircle className="h-3 w-3" /> Approved
-                            </span>
-                          )}
-                          {isRef && lineStatus.get(line.line_no) === "needs-review" && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
-                              <AlertTriangle className="h-3 w-3" /> Needs Review
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      {f.status&&f.status!=="pending"&&<span className="rounded bg-[#21262d] px-2 py-0.5 text-[10px] text-[#8b949e]">{f.status.toUpperCase()}</span>}
+                    {f.ai_override&&!f.applies&&<span className="rounded bg-blue-500/20 px-2 py-0.5 text-[10px] text-blue-400" title={f.ai_reasoning||""}>🤖 AI OVERRULED</span>}
                     </div>
-                  )
-                })
-              )}
+                    <p className="mt-1 text-[#8b949e]">{f.description}</p>
+                    {f.ai_reasoning&&<p className="mt-1 text-[10px] text-blue-400/70 italic">{f.ai_reasoning}</p>}
+                    {f.line_numbers&&f.line_numbers.length>0&&<p className="mt-1 text-[10px] text-[#58a6ff]">Lines: {f.line_numbers.join(", ")}</p>}
+                    <div className="mt-2 rounded bg-[#0d1117] px-2 py-1.5 text-[10px] text-[#c9d1d9] border border-[#21262d]">📝 {getNote(f)}</div>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={()=>decide(f.id,"confirmed")} className="flex-1 rounded bg-green-600/20 px-2 py-1.5 text-[11px] font-semibold text-green-400 hover:bg-green-600/30">C: CONFIRM</button>
+                      <button onClick={()=>decide(f.id,"questionable")} className="flex-1 rounded bg-yellow-600/20 px-2 py-1.5 text-[11px] font-semibold text-yellow-400 hover:bg-yellow-600/30">Q: QUESTION?</button>
+                      <button onClick={()=>{const r=prompt("Override reason:");if(r)decide(f.id,"override",r)}} className="flex-1 rounded bg-purple-600/20 px-2 py-1.5 text-[11px] font-semibold text-purple-400 hover:bg-purple-600/30">O: OVERRIDE</button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
+        )}
+
+        {/* RIGHT: Estimate (shared across both tabs) */}
+        <div className="w-[360px] shrink-0 overflow-y-auto border-l border-[#21262d] p-2">
+          <EstimatePanel />
         </div>
       </div>
     </div>
