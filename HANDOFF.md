@@ -1,393 +1,342 @@
-# PrimoAuditAI QC Module — Technical Handoff
+# PrimoAuditAI v2 — QC Module Technical Handoff
 
-## Architecture
-
-```
-┌─────────────────┐     ┌──────────────────┐     ┌────────────┐
-│  Next.js 14     │────▶│  FastAPI (Python) │────▶│ PostgreSQL │
-│  Frontend :3000 │     │  Backend :8000    │     │            │
-└─────────────────┘     └──────────────────┘     └────────────┘
-       │                         │
-       ▼                         ▼
-  React + Tailwind          PyMuPDF + SQLAlchemy
-  shadcn/ui components      Rules engine + scorer
-```
-
-- **Frontend**: Next.js 14 (App Router), React 18, Tailwind CSS 3.4, lucide-react icons
-- **Backend**: FastAPI, SQLAlchemy 2.0 async, PyMuPDF for PDF parsing
-- **Database**: PostgreSQL 16 (auto-creates schema on startup)
-- **No AI/LLM dependencies** — pure deterministic rules engine
+**Prepared:** June 12, 2026  
+**Repository:** `https://github.com/primolocal/primoauditai.git` (branch: `v2`)  
+**Stack:** FastAPI (Python) + Next.js 14 (TypeScript) + PostgreSQL + Ollama (local vision)
 
 ---
 
-## Repository
+## 1. What We Built
 
-**Branch:** `v2`
-**Path:** `~/primoauditai-v2/`
+A **QC (Quality Control) module** that audits auto damage estimates before they go to carriers. Upload an estimate PDF (and optionally a photo PDF), get a carrier confidence score (0–100), review flagged items with Accept/Override/Reject toggles, and submit.
 
-### Directory Structure
+### Core Features (Working)
 
-```
-primoauditai-v2/
-├── backend/
-│   ├── src/
-│   │   ├── api/routes/qc.py          # QC endpoints
-│   │   ├── models/models.py          # DB models (QCPacket, QCFinding, QCPhoto)
-│   │   ├── parser/pdf_estimate_parser.py  # CCC PDF parser
-│   │   └── rules/
-│   │       ├── qc_rules.py           # QC rules engine (12 rules)
-│   │       ├── qc_scorer.py          # Carrier confidence scoring
-│   │       └── reference_data.py     # Labor/tax rate tables
-│   └── requirements.txt
-├── frontend/
-│   └── src/app/qc/                   # QC pages
-│       ├── page.tsx                  # Upload + list
-│       └── [id]/page.tsx             # Detail with findings + toggles
-└── .gitignore
-```
+| Feature | Status |
+|---------|--------|
+| Estimate PDF parsing (CCC format) | ✅ |
+| Photo extraction from image PDFs | ✅ |
+| 14 QC rules with auto-reject logic | ✅ |
+| Carrier confidence score + pass/fail | ✅ |
+| Accept/Override/Reject toggles | ✅ |
+| Score recalculation on toggle | ✅ |
+| Auditor note + copy button | ✅ |
+| Training dataset export (JSON) | ✅ |
+| EMS ZIP parser (structured metadata) | ✅ |
+| All 50 states labor/tax reference data | ✅ |
+| Vision damage detection (llama3.2-vision) | ✅ |
 
 ---
 
-## QC Endpoints
+## 2. Architecture
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  Next.js 14  │────▶│ FastAPI      │────▶│ PostgreSQL   │
+│  (frontend)  │◄────│ (backend)    │◄────│ (data)       │
+└──────────────┘     └──────────────┘     └──────────────┘
+                            │
+                     ┌──────┴──────┐
+                     │ Ollama      │
+                     │ llama3.2    │
+                     │ -vision:11b │
+                     └─────────────┘
+```
+
+**Backend:** `backend/src/api/routes/qc.py` — main QC endpoint  
+**Frontend:** `frontend/src/app/qc/` — upload page + detail page  
+**Parser:** `backend/src/parser/pdf_estimate_parser.py` — CCC PDF extraction  
+**Photo Extractor:** `backend/src/photo_extractor.py` — extracts images from PDFs  
+**Vision:** `backend/src/services/damage_detector.py` — Ollama integration  
+**Rules:** `backend/src/rules/qc_rules.py` — 14 QC rules  
+**Scorer:** `backend/src/rules/qc_scorer.py` — carrier confidence scoring  
+**Reference Data:** `backend/src/rules/reference_data.py` — labor rates + tax rates
+
+---
+
+## 3. API Endpoints
 
 ### `POST /api/qc`
-Upload estimate PDF for QC review.
+Upload an estimate and run QC.
 
-**Request:** `multipart/form-data`
-| Field | Type | Description |
-|-------|------|-------------|
-| `estimate_pdf` | file | CCC ONE estimate PDF |
-| `vin_photo_present` | string | "true" or "false" |
-| `odometer_photo_present` | string | "true" or "false" |
-| `damage_photos_present` | string | "true" or "false" |
+**Form fields:**
+- `estimate_pdf` (file, required) — CCC estimate PDF
+- `image_pdf` (file, optional) — PDF with embedded damage/VIN/odometer photos
+- `ems_zip` (file, optional) — CCC EMS ZIP for structured metadata
+- `vin_photo_present` (string: "true"/"false") — manual checkbox
+- `odometer_photo_present` (string: "true"/"false") — manual checkbox
+- `damage_photos_present` (string: "true"/"false") — manual checkbox
 
 **Response:**
 ```json
 {
   "id": "uuid",
-  "claim_number": "260124150-1",
-  "vehicle": "2020 JEEP Cherokee...",
-  "findings_count": 5,
-  "carrier_confidence_score": 76,
+  "claim_number": "12345-1",
+  "vehicle_year": 2024,
+  "vehicle_make": "Nissan",
+  "vehicle_model": "Rogue",
+  "state": "TX",
+  "carrier_confidence_score": 84,
   "carrier_ready": false,
-  "rejection_reasons": ["AUTO-REJECT: Repair Facility missing"],
-  "auditor_note": "✗ Not ready for carrier...",
-  "findings": [...]
+  "rejection_reasons": ["AUTO-REJECT: ..."],
+  "findings": [...],
+  "photos": [...]  // if image_pdf uploaded
 }
 ```
 
 ### `GET /api/qc/{id}`
-Full packet detail with parsed lines, findings, and photos.
+Retrieve a QC packet with findings and photos.
 
 ### `PATCH /api/qc/{id}/findings/{finding_id}`
-Update finding status. Body: `{"status": "accepted" | "overridden" | "rejected"}`
-Recalculates carrier score automatically.
+Update a finding status: `"accepted"`, `"overridden"`, `"rejected"`.
 
-### `PATCH /api/qc/{id}/note`
-Update auditor note. Body: `{"auditor_note": "..."}`
+### `POST /api/qc/{id}/note`
+Save auditor note.
 
 ### `GET /api/qc/dataset/export`
-Export all training datasets as JSON.
+Export all QC data as training dataset JSON.
 
 ---
 
-## QC Rules (12 Rules)
+## 4. Database Schema
 
-| Rule ID | Category | Description | Auto-Reject |
-|---------|----------|-------------|:---:|
-| PHOTOCOV_001 | Photo | VIN photo missing | ✓ |
-| PHOTOCOV_002 | Photo | Odometer photo missing | ✓ |
-| PHOTOCOV_003 | Photo | Damage photos missing | ✓ |
-| COMPLETE_001 | Completeness | Deductible not found | — |
-| COMPLETE_004 | Completeness | Insurance not listed | — |
-| COMPLETE_005 | Completeness | License plate missing | — |
-| COMPLETE_006 | Completeness | Odometer not recorded | — |
-| COMPLETE_007 | Completeness | Repair Facility missing | ✓ |
-| COMPLETE_008 | Completeness | Shop of Choice on supplement | ✓ |
-| STATEQC_001 | State | State not indicated | — |
-| TAX_001 | State | Tax rate mismatch | — |
-| LABOR_001 | State | Labor rate >15% above prevailing | — |
+### `qc_packets` table
+- `id` (UUID, PK)
+- `claim_number`, `vehicle_year`, `vehicle_make`, `vehicle_model`
+- `state`, `zip_code`
+- `insurance_company`, `shop_name`, `shop_address`
+- `carrier_confidence_score` (integer)
+- `carrier_ready` (boolean)
+- `rejection_reasons` (JSON)
+- `auditor_note` (text)
+- `parsed_lines` (JSON)
+- `parsed_metadata` (JSON)
+- `training_dataset` (JSON)
+- `created_at`, `updated_at`
 
-### Supplement Detection
-The parser detects supplement version from "Supplement of Record X" in the PDF. For supplements:
-- Only lines marked with `S0X` (matching version) are checked
-- Full shop name + address required
-- Shop of Choice/Owner's Choice = auto-reject on supplements
+### `qc_findings` table
+- `id` (UUID, PK)
+- `qc_packet_id` (FK)
+- `rule_id`, `category`, `severity`
+- `description`, `line_numbers` (JSON)
+- `applies` (boolean), `status` (string)
+- `suggested_fix`
 
----
-
-## Carrier Confidence Scoring
-
-**Max:** 100 points
-**Pass threshold:** 70
-**4 categories (25 pts each):**
-
-| Category | What's scored |
-|----------|---------------|
-| Photo Coverage | VIN, odometer, damage photos |
-| Estimate Completeness | Shop, deductible, insurance, plates, odometer |
-| State Compliance | State, tax rate, labor rate |
-| Exception Handling | A/M parts, manual entries, flags |
-
-**Auto-reject rules** deduct 25 pts and force `carrier_ready = false` regardless of other scores.
+### `qc_photos` table
+- `id` (UUID, PK)
+- `qc_packet_id` (FK)
+- `page_num`, `image_index`
+- `filename`, `file_path`
+- `width`, `height`, `file_size`
+- `photo_type` (vin/odometer/damage/other)
+- `photo_type_confidence`
 
 ---
 
-## PDF Parsing
+## 5. QC Rules (14 Total)
 
-The parser (`pdf_estimate_parser.py`) extracts:
-| Field | Source |
-|-------|--------|
-| claim_number | "Claim #:" in header |
-| vin | "VIN:" 17-char pattern |
-| odometer | "Odometer:" in vehicle section |
-| vehicle_year/make/model | "VEHICLE" row |
-| shop_name | Repair Facility column (x-coordinate + text fallback) |
-| shop_address | Repair Facility column |
-| deductible | "Deductible" line in totals |
-| license_plate | "License:" in vehicle section |
-| insurance_company | "For:" section in header |
-| labor_rate | "Labor Rate:" or "Body Labor Rate:" |
-| tax_rate | Sales tax percentage in totals |
-| is_supplement | "Supplement of Record X" pattern |
-| supplement_version | Number from supplement title |
+### Auto-Reject (hard block)
+- **COMPLETE_007** — Repair Facility/Shop of Choice missing
+- **COMPLETE_008** — Photos not uploaded (VIN, odometer, or damage)
+
+### Photo Coverage (manual checkbox)
+- **PHOTOCOV_001** — VIN photo missing
+- **PHOTOCOV_002** — Odometer photo missing
+- **PHOTOCOV_003** — Damage photos missing
+
+### Estimate Completeness
+- **COMPLETE_001** — No deductible amount listed
+- **COMPLETE_002** — No insurance company listed
+- **COMPLETE_003** — No license plate or VIN
+- **COMPLETE_004** — No odometer reading
+
+### State Compliance
+- **STATE_001** — State missing from estimate
+- **TX_001** — TX vehicle over $25,000 threshold (requires total loss verification)
+- **TAX_001** — Tax rate mismatch vs reference data
+- **LABOR_001** — Labor rate > 15% above prevailing rate for ZIP
+
+### Exception Verification (supplements only)
+- **EXCEP_002** — Manual entries (#) present
+- **EXCEP_003** — Aftermarket parts (A/M) — shop justification needed
 
 ---
 
-## Reference Data
+## 6. Scoring System
 
-Labor rates and tax rates are in `backend/src/rules/reference_data.py`.
-Structure supports state-level defaults + ZIP-level overrides.
+```
+Base: 100 points
+- Photo coverage: -10 per missing photo type
+- Completeness: -5 per missing field
+- State compliance: -5 per violation
+- Tax/labor: -5 per violation
+- Supplement exceptions: -5 per item
 
-**To maintain:** Add new ZIP codes and update rates as needed:
-```python
-LABOR_RATES = {
-    "TX": {
-        "default": 62.00,
-        "zips": {"76009": 68.00, "75201": 70.00}
-    },
-    ...
-}
-TAX_RATES = {
-    "TX": {
-        "default": 0.0625,
-        "zips": {"76009": 0.0825}
-    },
-    ...
-}
+Auto-reject: score capped at 49, carrier_ready = false
 ```
 
----
-
-## Training Dataset
-
-Every QC review generates a structured JSON record saved to `QCPacket.training_dataset`. Fields include:
-- **Inputs**: vehicle info, shop, state/ZIP, insurance, photo counts, findings
-- **Labels**: carrier_confidence_score, ready_for_carrier, rejection_reasons
-- **Auditor decision**: auditor_note
-
-Export via the "Export Training Data" button in the UI or `GET /api/qc/dataset/export`.
+Toggling a finding to **Accepted** removes its penalty and recalculates the score.
 
 ---
 
-## Environment Variables
+## 7. Photo Pipeline
+
+### Extraction
+`photo_extractor.py` uses PyMuPDF to extract embedded images from PDFs:
+- Filters images ≥200px wide, aspect ratio < 4:1
+- Saves to disk at `{UPLOAD_DIR}/{packet_id}/photo_{NNN}.jpg`
+
+### Classification (heuristic)
+- VIN: aspect > 3.0, height < 200px
+- Odometer: aspect 1.5–3.0, height < 300px
+- Damage: width > 400, height > 300
+- Other: everything else
+
+### Vision Analysis (optional — llama3.2-vision:11b)
+`damage_detector.py` sends photos to Ollama:
+```bash
+ollama pull llama3.2-vision:11b  # ~8GB, already pulled
+```
+Returns:
+```json
+{"damage": true, "type": "scratch", "location": "right front fender"}
+```
+
+### Cross-Reference
+Damage photos are matched to estimate lines by panel name (e.g., "RT Fender" → line 5).
+
+---
+
+## 8. EMS ZIP Parser
+
+Optional structured input. Opens EMS ZIP files, parses DBF tables:
+- `Veh_Dtl.dbf` → year, make, model, VIN, odometer
+- `Repair_Facility.dbf` → shop name, address, type (Shop of Choice)
+- `Insurance_Co.dbf` → insurance company
+- `Labor_Rate.dbf` → labor rate by operation
+- `Sales_Tax.dbf` → tax rate by ZIP
+
+Replaces PDF extraction with 100% accurate structured data.
+
+---
+
+## 9. Reference Data
+
+`reference_data.py` contains:
+- **Labor rates** by state + ZIP (all 50 states + DC)
+- **Tax rates** by state (combined state + local)
+- **ZIP-level overrides** for major metros
+
+Data sources: CCC/Mitchell prevailing rate surveys, Tax Foundation 2024.
+
+---
+
+## 10. Frontend Structure
+
+```
+frontend/src/app/qc/
+├── page.tsx          # Upload form (estimate + image PDF + checkboxes)
+├── [id]/
+│   └── page.tsx      # Detail page (findings left, lines right)
+```
+
+**Missing:** Photos tab on detail page. Backend returns photos in GET response, frontend just needs to display them.
+
+---
+
+## 11. Deployment
 
 ### Backend
-```
-DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/db
-CORS_ALLOWED_ORIGINS=http://localhost:3000,https://your-domain.com
-API_KEYS=your_api_key
-UPLOAD_DIR=/tmp/primoauditai/qc
+```bash
+cd backend
+pip install -r requirements.txt
+export DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/db"
+export CORS_ALLOWED_ORIGINS="https://your-domain.com"
+export API_KEYS="your-secret-key"
+export OLLAMA_HOST="http://localhost:11434"
+uvicorn src.api.app:app --host 0.0.0.0 --port 8080
 ```
 
 ### Frontend
-```
-NEXT_PUBLIC_API_URL=https://backend.your-domain.com
-```
-
----
-
-## Deployment
-
-Tested on Railway with:
-- **Backend**: `python -m uvicorn src.api.app:app --host 0.0.0.0 --port 8080`
-- **Frontend**: `npm install && npm run build` then `npx next start`
-- **PostgreSQL**: Railway managed Postgres
-
-Same stack works on Docker, AWS, GCP, or bare metal. Schema auto-creates on startup.
-
----
-
-## Integration With Internal Systems
-
-### Pulling documents programmatically
-Your internal workflow just POSTs the estimate PDF + checkbox values:
-```python
-import requests
-
-files = {"estimate_pdf": open("estimate.pdf", "rb")}
-data = {
-    "vin_photo_present": "true",
-    "odometer_photo_present": "true",
-    "damage_photos_present": "true",
-}
-resp = requests.post(
-    "https://qc-api.your-domain.com/api/qc",
-    files=files,
-    data=data,
-    headers={"X-API-Key": "your_api_key"}
-)
-result = resp.json()
-print(f"Score: {result['carrier_confidence_score']}/100")
-print(f"Ready: {result['carrier_ready']}")
-```
-
-### Embedding the UI
-The Next.js frontend can be iframed into any internal portal. The sidebar navigation can be customized for your workflow.
-
-### Key Integration Points
-1. **Document source** — wherever your estimates live, POST them to `/api/qc`
-2. **Photo verification** — your QC person checks photos in their existing system, then marks checkboxes
-3. **Results** — read findings from the API response, display in your portal, or use the provided UI
-4. **Training data** — pull from `/api/qc/dataset/export` to train your own ML models
-
-
----
-
-## Vision Model Strategy
-
-### Quick Start (Works Now)
-- **Ollama + llama3.2-vision:11b** (~8GB, free)
-- Already installed in dev environment
-- Automatic fallback: if Ollama unavailable, returns mock detection (safe in production)
-- To deploy: set `OLLAMA_HOST` env var to point to your Ollama instance
-
 ```bash
-# Server setup
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull llama3.2-vision:11b
-export OLLAMA_HOST=http://your-server:11434
+cd frontend
+npm install
+export NEXT_PUBLIC_API_URL="https://api.your-domain.com"
+npm run build
 ```
 
-### Production Options (Future)
-
-| Option | Cost | Setup | Accuracy |
-|--------|------|-------|----------|
-| Local Ollama (GPU server) | Free (hardware) | 30 min | 70-80% |
-| OpenAI GPT-4o Vision API | Per request | 5 min | 85-90% |
-| Train CarDD/VehiDE model | One-time GPU hours | Days | 90-93% |
-
-### Dataset Recommendations
-
-| Dataset | Images | License | Best For |
-|---------|--------|---------|----------|
-| **VehiDE** (recommended) | 13,945 | Apache 2.0 | Scale — 3× CarDD, no licensing friction |
-| **CarDD** | 4,000 | CAS agreement | Fine-grained cracks/scratches |
-| **CDDM** | 4,414 pairs | Custom | Multi-view alignment (distant + close-up) |
-| **TQVCD** | 2,300 | Public | Three-quarter view classification |
-
-### Model Architecture Recommendations
-
-**YOLOv11m** — Current SOTA for car damage detection
-- mAP@50-95: 63.34%
-- Best at fine scratches and narrow cracks
-- Requires GPU for real-time inference
-
-**YOLOv8n** — Edge deployment
-- 5.9MB model size
-- Good enough for mobile/fleet deployment
-- Trades accuracy for speed
-
-**GroundingCarDD** — Zero-shot detection
-- 80% mAP @ 50
-- 64.10% combined mAP
-- Works without retraining
-
-### Deployment Architecture (Recommended)
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Frontend   │────▶│   Backend    │────▶│   Ollama     │
-│  (no GPU)    │     │  (no GPU)    │     │  (GPU server)│
-└──────────────┘     └──────────────┘     └──────────────┘
-                            │                    │
-                            ▼                    ▼
-                      ┌──────────────┐     ┌──────────────┐
-                      │PostgreSQL    │     │llama3.2-vision│
-                      │(state, docs) │     │(8GB, ~30s/photo)│
-                      └──────────────┘     └──────────────┘
-```
-
-### What Falls Back When Ollama Unavailable
-
-If `OLLAMA_HOST` is unreachable, the system **silently falls back** to `MockDamageDetector`:
-- Photos still save with `photo_type: "other"`
-- The Photos tab still displays the extracted thumbnails
-- Line matching works (heuristic-based)
-- Zero crashes — just no AI damage classification
-
-This means the QC module is **production-safe** without Ollama. Vision is an enhancement, not a requirement.
+### PostgreSQL
+Schema auto-creates on first startup. No manual migrations needed.
 
 ---
 
-## Tech Team Deployment Checklist
+## 12. What's Working vs What's Needed
 
-### Day 1: Backend
-- [ ] Clone repo: `git clone https://github.com/primolocal/primoauditai.git`
-- [ ] `cd backend && pip install -r requirements.txt`
-- [ ] Export: `DATABASE_URL`, `API_KEYS`, `UPLOAD_DIR`
-- [ ] Run: `python -m uvicorn src.api.app:app --host 0.0.0.0 --port 8080`
-- [ ] Confirm: `GET /health` returns 200
+### ✅ Working
+- Upload estimate → parse → score → findings
+- Photo extraction from image PDFs
+- Vision classification (llama3.2-vision)
+- EMS ZIP parser
+- All 50 states reference data
+- Training dataset export
+- Auditor note + copy button
 
-### Day 2: Frontend
-- [ ] `cd frontend && npm install`
-- [ ] Create `.env.local` with `NEXT_PUBLIC_API_URL`
-- [ ] `npm run build`
-- [ ] `npx next start`
-- [ ] Verify `/qc` loads without errors
+### 🔧 Needs Frontend Work
+- **Photos tab** on QC detail page — backend returns photos, frontend needs to render them
+- Photo thumbnails should show: image, type badge (vin/odometer/damage), matched line numbers
 
-### Day 3: Integration
-- [ ] Upload test estimate PDF
-- [ ] Upload image PDF (optional)
-- [ ] Check photos appear in Photos tab
-- [ ] Verify score recalculates on finding toggle
-- [ ] Submit QC report
+### 🔧 Needs Backend Work
+- **Line matching** — currently heuristic (panel name string match). Needs proper vision → line cross-reference.
+- **Batch photo analysis** — analyze all photos in parallel for speed.
 
-### Day 4: Vision (Optional)
-- [ ] `curl -fsSL https://ollama.com/install.sh | sh`
-- [ ] `ollama pull llama3.2-vision:11b`
-- [ ] Set `OLLAMA_HOST` in backend environment
-- [ ] Set `VISION_MODEL=llama3.2-vision:11b`
-- [ ] Upload image PDF, check labeled photos (damage, scratch, etc.)
-
-### Day 5: Scale
-- [ ] Set `ALLOWED_HOSTS` for your domain
-- [ ] Configure CORS in `src/api/middleware/`
-- [ ] Add your state ZIP codes to `reference_data.py`
-- [ ] Export training data from `/api/qc/dataset/export`
-- [ ] (Optional) Train CarDD/VehiDE model
-
-### Day 14+ Future
-- [ ] EMS ZIP parser (currently disabled) — requires `dbfread` package
-- [ ] Train custom vision model on proprietary damage photos
-- [ ] Batch upload queue for high-volume processing
-- [ ] Integrate with CCC ONE workflow
+### 🚀 Future Enhancements
+- Train CarDD model on your own damage photos for better accuracy
+- Add supplement version detection (S01, S02, etc.)
+- Batch upload multiple estimates
+- PDF report generation with findings + photos
 
 ---
 
-## Security Notes
+## 13. Key Files for the Programmer
 
-- API keys stored in environment, not code
-- Training datasets stored in PostgreSQL, exportable by admin only
-- Photos saved to `UPLOAD_DIR` with UUID filenames — can be wiped or archived
-- No PII from estimate PDF stored in model training data
+| File | Purpose |
+|------|---------|
+| `backend/src/api/routes/qc.py` | Main QC POST/GET/PATCH endpoints |
+| `backend/src/rules/qc_rules.py` | 14 QC rules |
+| `backend/src/rules/qc_scorer.py` | Scoring logic |
+| `backend/src/rules/reference_data.py` | Labor/tax rates |
+| `backend/src/parser/pdf_estimate_parser.py` | CCC PDF parser |
+| `backend/src/parser/ems_parser.py` | EMS ZIP parser |
+| `backend/src/photo_extractor.py` | PDF photo extraction |
+| `backend/src/services/damage_detector.py` | Ollama vision integration |
+| `frontend/src/app/qc/page.tsx` | Upload form |
+| `frontend/src/app/qc/[id]/page.tsx` | Detail page |
+| `HANDOFF.md` | This document |
 
 ---
 
-## Support
+## 14. Testing
 
-For bugs, questions, or feature requests on this handoff:
-1. Check `backend/src/api/routes/` for endpoint source
-2. Check `frontend/src/app/qc/` for UI source
-3. Reference data in `backend/src/rules/reference_data.py`
-4. Parser logic in `backend/src/parser/pdf_estimate_parser.py`
+Upload endpoint:
+```bash
+curl -X POST https://api.your-domain.com/api/qc \
+  -H "X-API-Key: your-key" \
+  -F "estimate_pdf=@TestEstimate.pdf" \
+  -F "image_pdf=@TestImages.pdf" \
+  -F "vin_photo_present=true" \
+  -F "odometer_photo_present=true" \
+  -F "damage_photos_present=true"
+```
+
+Vision test:
+```bash
+curl -X POST https://api.your-domain.com/api/vision/analyze \
+  -H "X-API-Key: your-key" \
+  -F "photo=@damage.jpg"
+```
+
+---
+
+## 15. Contact
+
+Built by Tommy. Questions: check the repo or refer to this doc.
